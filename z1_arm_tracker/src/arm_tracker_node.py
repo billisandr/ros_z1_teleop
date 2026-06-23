@@ -21,7 +21,7 @@ import threading
 import numpy as np
 import rospy
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import Bool, Float64
+from std_msgs.msg import Bool, Float64, Float64MultiArray
 from sensor_msgs.msg import JointState
 
 SDK_LIB_PATH = '/home/rosuser/sdk_z1/lib'
@@ -110,6 +110,26 @@ class ArmTrackerNode:
         self.gripper_open     = rospy.get_param('arm_tracker/gripper_open_angle',  -1.5708)
         self._gripper_cmd_val = 0.0   # latest 0..1 command (start closed)
 
+        # --- joint_mirror mode (control/mode: joint_mirror, PLAN §4.3) ---
+        # Drive joints directly from the operator's arm pose, bypassing IK.
+        self.control_mode = rospy.get_param('control/mode', 'cartesian')
+        self.joint_mirror = (self.control_mode == 'joint_mirror')
+        self.jm_alpha = float(rospy.get_param('joint_mirror/smoothing_alpha', 0.12))
+        # Per-Z1-joint remap from the 6 human angles. Entry: [src, sign, scale, offset_deg, enabled]
+        self._jm_map = []
+        for j in range(1, 7):
+            m = rospy.get_param('joint_mirror/map_joint%d' % j, [j - 1, 1.0, 1.0, 0.0, False])
+            self._jm_map.append({
+                'src': int(m[0]), 'sign': float(m[1]), 'scale': float(m[2]),
+                'offset': float(m[3]), 'enabled': bool(m[4]),
+            })
+        # Z1 joint limits (radians) for safety clamping — bypassing IK, we own this.
+        jl = rospy.get_param('joint_limits', {})
+        self._jl = [jl.get('j%d' % j, [-3.14, 3.14]) for j in range(1, 7)]
+        self.latest_angles = None        # latest [q1..q6] human degrees from the detector
+        self._jm_q = None                # smoothed Z1 joint command vector (radians)
+        self._prev_active = False
+
         if not self.enabled:
             rospy.loginfo("[arm_tracker] Tracking disabled in config — observe mode.")
 
@@ -119,6 +139,8 @@ class ArmTrackerNode:
         rospy.Subscriber('/hand/tracking_active',    Bool,        self._active_cb,      queue_size=1)
         if self.enable_gripper:
             rospy.Subscriber('/hand/gripper_cmd',    Float64,     self._gripper_cb,     queue_size=1)
+        if self.joint_mirror:
+            rospy.Subscriber('/hand/joint_targets', Float64MultiArray, self._joint_targets_cb, queue_size=1)
 
         # One publisher per joint — matches IOROS topic order
         self.joint_pubs = None
@@ -143,10 +165,16 @@ class ArmTrackerNode:
             except Exception as e:
                 rospy.logwarn(f"[arm_tracker] Could not load arm model: {e}")
 
-        rospy.loginfo(f"[arm_tracker] Ready — fixed_x={self.fixed_x:.2f} m, "
-                      f"Y∈[{self.y_min:.2f},{self.y_max:.2f}], "
-                      f"Z∈[{self.z_min:.2f},{self.z_max:.2f}], "
-                      f"gripper={'on' if self.enable_gripper else 'off'}")
+        if self.joint_mirror:
+            on = [j + 1 for j in range(6) if self._jm_map[j]['enabled']]
+            rospy.loginfo(f"[arm_tracker] Ready — JOINT_MIRROR (bypassing IK), "
+                          f"driving joints {on}, clamped to joint_limits, "
+                          f"gripper={'on' if self.enable_gripper else 'off'}")
+        else:
+            rospy.loginfo(f"[arm_tracker] Ready — CARTESIAN, fixed_x={self.fixed_x:.2f} m, "
+                          f"Y∈[{self.y_min:.2f},{self.y_max:.2f}], "
+                          f"Z∈[{self.z_min:.2f},{self.z_max:.2f}], "
+                          f"gripper={'on' if self.enable_gripper else 'off'}")
 
     # ------------------------------------------------------------------ callbacks
 
@@ -166,6 +194,11 @@ class ArmTrackerNode:
     def _gripper_cb(self, msg):
         # incoming 0..1 (0=closed, 1=open); clamp for safety
         self._gripper_cmd_val = self._clamp(msg.data, 0.0, 1.0)
+
+    def _joint_targets_cb(self, msg):
+        # 6 human arm angles in degrees [q1..q6] from the detector
+        if len(msg.data) >= 6:
+            self.latest_angles = list(msg.data[:6])
 
     # ------------------------------------------------------------------ helpers
 
@@ -239,6 +272,30 @@ class ArmTrackerNode:
         cmd.Kd   = self.kd
         self.gripper_pub.publish(cmd)
 
+    def _joint_mirror_step(self):
+        """Map the operator's 6 arm angles -> Z1 joints, clamp to joint_limits,
+        smooth, and command directly (no IK). Only the joints marked enabled in
+        the config move; the rest hold. Called only while tracking_active."""
+        if self.joint_pubs is None or self.latest_angles is None:
+            return
+        with self._q_lock:
+            q_meas = self.q_current.copy()
+        # On (re)engage, start from the measured pose so the arm never jumps.
+        if self._jm_q is None or not self._prev_active:
+            self._jm_q = q_meas.copy()
+
+        a = self.latest_angles
+        for i in range(6):
+            m = self._jm_map[i]
+            if m['enabled']:
+                deg = m['sign'] * m['scale'] * a[m['src']] + m['offset']
+                desired = self._clamp(np.radians(deg), self._jl[i][0], self._jl[i][1])
+            else:
+                desired = self._jm_q[i]   # hold disabled joints where they are
+            self._jm_q[i] += self.jm_alpha * (desired - self._jm_q[i])
+            self._jm_q[i] = self._clamp(self._jm_q[i], self._jl[i][0], self._jl[i][1])
+        self._send_joint_commands(self._jm_q)
+
     # ------------------------------------------------------------------ main loop
 
     def run(self):
@@ -247,6 +304,16 @@ class ArmTrackerNode:
         while not rospy.is_shutdown():
             self._refresh_live_params()
             self._send_gripper_command()
+
+            # --- joint_mirror mode: drive joints directly from the arm pose ---
+            if self.joint_mirror:
+                if self.enabled and self.tracking_active:
+                    self._joint_mirror_step()
+                self._prev_active = self.tracking_active
+                rate.sleep()
+                continue
+
+            # --- cartesian hand-mirror mode (default): IK on the Y/Z target ---
             if self.enabled and self.tracking_active and self.latest_pose is not None:
                 p = self.latest_pose.pose.position
 

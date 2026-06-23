@@ -37,7 +37,7 @@ import cv2
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import Bool, Float64
+from std_msgs.msg import Bool, Float64, Float64MultiArray
 
 try:
     import mediapipe as mp
@@ -59,6 +59,71 @@ FINGER_TIPS = {'index': 8, 'middle': 12, 'ring': 16, 'pinky': 20}
 PALM_LMS = [0, 5, 9, 13, 17]          # wrist + the four finger MCPs (palm centroid)
 THUMB_TIP, THUMB_IP, INDEX_MCP = 4, 3, 5
 INDEX_TIP = 8
+
+# MediaPipe Pose landmark indices per body side (for joint_mirror, §4.3)
+POSE_IDX = {
+    'left':  {'shoulder': 11, 'elbow': 13, 'wrist': 15, 'index': 19, 'pinky': 17, 'hip': 23},
+    'right': {'shoulder': 12, 'elbow': 14, 'wrist': 16, 'index': 20, 'pinky': 18, 'hip': 24},
+}
+
+
+# ---------------------------------------------------------------------------
+# 6-DOF arm-angle decomposition (lifted from reference/hand_tracker_3d.py, §13)
+# Maps the shoulder->elbow->wrist->hand chain to [q1..q6] degrees:
+#   q1 shoulder azimuth, q2 shoulder elevation, q3 humeral rotation,
+#   q4 elbow flexion (0=straight), q5 wrist flexion, q6 wrist deviation
+# ---------------------------------------------------------------------------
+def _unit(v):
+    n = np.linalg.norm(v)
+    return v / n if n > 1e-9 else np.zeros_like(v)
+
+
+def _angle(a, b):
+    return float(np.degrees(np.arccos(np.clip(np.dot(_unit(a), _unit(b)), -1.0, 1.0))))
+
+
+def _signed_angle(a, b, axis):
+    a, b, axis = _unit(a), _unit(b), _unit(axis)
+    s = float(np.dot(np.cross(a, b), axis))
+    c = float(np.dot(a, b))
+    return float(np.degrees(np.arctan2(s, c)))
+
+
+def arm_joint_angles(s, e, w, s_other, hip, hip_other, idx_pt, pky_pt):
+    """Approximate 6-DOF decomposition of the shoulder-elbow-wrist-hand chain.
+    Returns degrees [q1..q6]. Pragmatic kinematic mapping for relative motion,
+    not a biomechanics model."""
+    shoulder_mid = (s + s_other) / 2.0
+    hip_mid = (hip + hip_other) / 2.0
+    up = _unit(shoulder_mid - hip_mid)
+    lateral = _unit(s - s_other)
+    forward = _unit(np.cross(up, lateral))
+    lateral = _unit(np.cross(forward, up))  # re-orthogonalise
+
+    u = e - s          # upper arm
+    f = w - e          # forearm
+    hvec = (idx_pt + pky_pt) / 2.0 - w  # hand direction
+
+    ux, uy, uz = np.dot(u, lateral), np.dot(u, up), np.dot(u, forward)
+    q1 = float(np.degrees(np.arctan2(uz, ux)))
+    q2 = float(np.degrees(np.arctan2(uy, np.hypot(ux, uz))))
+
+    n = _unit(u)
+    ref = up - np.dot(up, n) * n
+    fp = f - np.dot(f, n) * n
+    q3 = _signed_angle(ref, fp, n)
+
+    q4 = _angle(u, f)
+
+    lat_w = _unit(idx_pt - pky_pt)
+    q5 = _signed_angle(f, hvec, lat_w)
+
+    n2 = _unit(f)
+    hand_normal = _unit(np.cross(idx_pt - w, pky_pt - w))
+    ref2 = up - np.dot(up, n2) * n2
+    q6 = _signed_angle(ref2, hand_normal, n2)
+
+    return np.array([q1, q2, q3, q4, q5, q6], dtype=np.float64)
 
 
 # ---------------------------------------------------------------------------
@@ -108,12 +173,9 @@ class HandDetectorNode:
         rospy.init_node('hand_detector', anonymous=False)
         self.bridge = CvBridge()
 
-        # --- control mode (joint_mirror is a Phase-7 stretch; cartesian default) ---
+        # --- control mode: cartesian hand-mirror (default) or joint_mirror (§4.3) ---
         self.control_mode = rospy.get_param('control/mode', 'cartesian')
-        if self.control_mode == 'joint_mirror':
-            rospy.logwarn("[hand_detector] control/mode='joint_mirror' is a Phase-7 "
-                          "stretch and is not implemented yet — using Cartesian mirror.")
-            self.control_mode = 'cartesian'
+        self.joint_mirror = (self.control_mode == 'joint_mirror')
 
         # --- MediaPipe Hands params ---
         self.flip_horizontal = bool(rospy.get_param('hand/flip_horizontal', True))
@@ -151,6 +213,16 @@ class HandDetectorNode:
         beta = float(rospy.get_param('smoothing/beta', 0.0))
         self.smoother = OneEuroFilter(freq, min_cutoff=min_cutoff, beta=beta)
 
+        # --- joint_mirror (MediaPipe Pose) params ---
+        self.pose_side = rospy.get_param('joint_mirror/pose_side', 'right').lower()
+        if self.pose_side not in POSE_IDX:
+            self.pose_side = 'right'
+        pose_complexity = int(rospy.get_param('joint_mirror/pose_model_complexity', 1))
+        pose_min_det = float(rospy.get_param('joint_mirror/pose_min_detection_confidence', 0.6))
+        pose_min_trk = float(rospy.get_param('joint_mirror/pose_min_tracking_confidence', 0.6))
+        self.pose_min_vis = float(rospy.get_param('joint_mirror/min_visibility', 0.5))
+        self._last_angles = None     # last valid [q1..q6] degrees (for HUD)
+
         self.show_debug = bool(rospy.get_param('camera/show_debug_image', True))
 
         # --- runtime state ---
@@ -172,11 +244,25 @@ class HandDetectorNode:
         self._mp_styles = mp.solutions.drawing_styles
         self._hand_conn = mp.solutions.hands.HAND_CONNECTIONS
 
+        # MediaPipe Pose — only built in joint_mirror mode (saves CPU otherwise)
+        self.pose = None
+        self._pose_conn = None
+        if self.joint_mirror:
+            self.pose = mp.solutions.pose.Pose(
+                static_image_mode=False,
+                model_complexity=pose_complexity,
+                min_detection_confidence=pose_min_det,
+                min_tracking_confidence=pose_min_trk,
+            )
+            self._pose_conn = mp.solutions.pose.POSE_CONNECTIONS
+
         # --- publishers ---
         self.pose_pub = rospy.Publisher('/hand/target_pose', PoseStamped, queue_size=1)
         self.active_pub = rospy.Publisher('/hand/tracking_active', Bool, queue_size=1)
         self.debug_pub = rospy.Publisher('/hand/debug_image', Image, queue_size=1)
         self.gripper_pub = rospy.Publisher('/hand/gripper_cmd', Float64, queue_size=1)
+        # joint_mirror: 6 human arm angles in degrees [q1..q6]
+        self.joint_pub = rospy.Publisher('/hand/joint_targets', Float64MultiArray, queue_size=1)
 
         # Publish the safe initial state immediately so the controller knows the
         # arm must stay frozen until the operator engages.
@@ -186,12 +272,20 @@ class HandDetectorNode:
         rospy.Subscriber('/camera/color/image_raw', Image, self._image_cb,
                          queue_size=1, buff_size=2 ** 24)
 
-        rospy.loginfo(
-            "[hand_detector] Ready — tracking %s hand, clutch=%s, gripper=%s. "
-            "Map: X=%.2f, Y%s, Z%s. Arm starts FROZEN (show an open palm to drive)."
-            % (self.hand_pref, self.clutch_mode, self.gripper_mode, self.fixed_x,
-               self.y_range, self.z_range)
-        )
+        if self.joint_mirror:
+            rospy.loginfo(
+                "[hand_detector] Ready — JOINT_MIRROR (Pose, %s arm), clutch=%s, "
+                "gripper=%s. Show your upper body; open palm to drive, fist to freeze."
+                % (self.pose_side, self.clutch_mode, self.gripper_mode)
+            )
+        else:
+            rospy.loginfo(
+                "[hand_detector] Ready — CARTESIAN hand-mirror, tracking %s hand, "
+                "clutch=%s, gripper=%s. Map: X=%.2f, Y%s, Z%s. Arm starts FROZEN "
+                "(show an open palm to drive)."
+                % (self.hand_pref, self.clutch_mode, self.gripper_mode, self.fixed_x,
+                   self.y_range, self.z_range)
+            )
 
     # ------------------------------------------------------------------ helpers
 
@@ -307,6 +401,35 @@ class HandDetectorNode:
         span = max(self.pinch_open - self.pinch_closed, 1e-6)
         return float(np.clip((pinch_d - self.pinch_closed) / span, 0.0, 1.0))
 
+    def _pose_angles(self, pose_result):
+        """Return [q1..q6] degrees for the configured arm from MediaPipe Pose
+        world landmarks, or None if the arm is not sufficiently visible.
+
+        Uses pose_world_landmarks (metric, hip-origin) for the decomposition —
+        the same input the reference tool uses (PLAN.md §13)."""
+        if pose_result is None or pose_result.pose_world_landmarks is None:
+            return None
+        lm_w = pose_result.pose_world_landmarks.landmark
+        side = POSE_IDX[self.pose_side]
+        other = POSE_IDX['left' if self.pose_side == 'right' else 'right']
+
+        lm_img = pose_result.pose_landmarks.landmark if pose_result.pose_landmarks else None
+        if lm_img is not None:
+            vis = min(lm_img[side['shoulder']].visibility,
+                      lm_img[side['elbow']].visibility,
+                      lm_img[side['wrist']].visibility)
+            if vis < self.pose_min_vis:
+                return None
+
+        def lift(i):
+            p = lm_w[i]
+            return np.array([p.x, -p.y, -p.z], dtype=np.float64)
+
+        return arm_joint_angles(
+            lift(side['shoulder']), lift(side['elbow']), lift(side['wrist']),
+            lift(other['shoulder']), lift(side['hip']), lift(other['hip']),
+            lift(side['index']), lift(side['pinky']))
+
     # ------------------------------------------------------------------ callback
 
     def _image_cb(self, msg):
@@ -323,6 +446,15 @@ class HandDetectorNode:
         rgb.flags.writeable = False
         result = self.hands.process(rgb)
         lms, label = self._select_hand(result)
+
+        # joint_mirror: run Pose on the same frame and decompose the arm angles
+        pose_result = None
+        angles = None
+        if self.joint_mirror and self.pose is not None:
+            pose_result = self.pose.process(rgb)
+            angles = self._pose_angles(pose_result)
+            if angles is not None:
+                self._last_angles = angles
 
         active = False
         target_world = None
@@ -385,14 +517,22 @@ class HandDetectorNode:
         if gripper_val is not None:
             self.gripper_pub.publish(Float64(data=gripper_val))
 
+        # joint_mirror: publish the 6 human arm angles whenever the pose is valid;
+        # the arm tracker remaps/clamps and only acts when tracking_active.
+        if angles is not None:
+            self.joint_pub.publish(Float64MultiArray(data=[float(a) for a in angles]))
+
         if self.show_debug:
             self._publish_debug(frame, lms, label, count, finger_states,
-                                active, target_world, gripper_val, pinch_d)
+                                active, target_world, gripper_val, pinch_d, pose_result)
 
     # ------------------------------------------------------------------ debug HUD
 
     def _publish_debug(self, frame, lms, label, count, finger_states,
-                       active, target_world, gripper_val, pinch_d):
+                       active, target_world, gripper_val, pinch_d, pose_result=None):
+        # joint_mirror: draw the full-body pose skeleton first (under the hand)
+        if pose_result is not None and pose_result.pose_landmarks is not None:
+            self._mp_draw.draw_landmarks(frame, pose_result.pose_landmarks, self._pose_conn)
         if lms is not None:
             self._mp_draw.draw_landmarks(
                 frame, lms, self._hand_conn,
@@ -407,12 +547,21 @@ class HandDetectorNode:
 
         clutch_txt = 'ENGAGED' if self.engaged else 'FROZEN'
         lost = self._frames_since_hand > self.lost_frames
+        mode_txt = 'JOINT_MIRROR (%s arm)' % self.pose_side if self.joint_mirror else 'CARTESIAN'
         lines = [
+            "mode: %s" % mode_txt,
             "hand: %s (want %s)" % (label or '--', self.hand_pref),
             "fingers up: %d  clutch: %s" % (count, clutch_txt),
             "tracking_active: %s%s" % (active, '  [LOST]' if lost else ''),
         ]
-        if target_world is not None:
+        if self.joint_mirror:
+            if self._last_angles is not None:
+                a = self._last_angles
+                lines.append("q[1-6] deg: %3.0f %3.0f %3.0f %3.0f %3.0f %3.0f"
+                             % (a[0], a[1], a[2], a[3], a[4], a[5]))
+            else:
+                lines.append("arm pose: not visible")
+        elif target_world is not None:
             lines.append("target  Y:% .3f  Z:% .3f  (X=%.2f)"
                          % (target_world[1], target_world[2], target_world[0]))
         if gripper_val is not None:
