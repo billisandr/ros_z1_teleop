@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """
-Arm Tracker Node — Reference Implementation
-Tracks a moving ArUco marker in 2D (Y lateral + Z vertical) by publishing
+Arm Tracker Node — hand-teleop control.
+Follows the operator's hand target in 2D (Y lateral + Z vertical) by publishing
 MotorCmd directly to the Gazebo joint controllers via ROS topics.
+
+Subscribes to the hand detector's two topics (renamed from the old ArUco ones):
+    /hand/target_pose      geometry_msgs/PoseStamped  (world frame)
+    /hand/tracking_active  std_msgs/Bool              (clutch + detection gate)
+    /hand/gripper_cmd      std_msgs/Float64           (optional pinch -> gripper, 0..1)
 
 No sim_ctrl or UDP required — pure ROS control.
 IK is computed using the Unitree Z1 model from the SDK (model only, no UDP).
 
-Fixed X (forward reach) is held constant; only Y and Z follow the marker.
+Fixed X (forward reach) is held constant; only Y and Z follow the hand. The
+pinch->gripper passthrough maps 0..1 onto the jointGripper limits.
 """
 
 import sys
@@ -15,7 +21,7 @@ import threading
 import numpy as np
 import rospy
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float64
 from sensor_msgs.msg import JointState
 
 SDK_LIB_PATH = '/home/rosuser/sdk_z1/lib'
@@ -91,18 +97,28 @@ class ArmTrackerNode:
         self.z_min = ws.get('z', [0.10, 0.75])[0]
         self.z_max = ws.get('z', [0.10, 0.75])[1]
 
-        self.marker_detected = False
+        self.tracking_active = False
         self.latest_pose     = None
         self.q_current       = np.zeros(6)
         self._q_lock         = threading.Lock()
+
+        # Gripper passthrough (pinch -> gripper). jointGripper limits from the Z1
+        # URDF (const.xacro): closed = 0.0 rad (Gripper_PositionMax),
+        # open = -pi/2 rad (Gripper_PositionMin). Incoming cmd is 0=closed..1=open.
+        self.enable_gripper   = rospy.get_param('arm_tracker/enable_gripper',       True)
+        self.gripper_closed   = rospy.get_param('arm_tracker/gripper_closed_angle', 0.0)
+        self.gripper_open     = rospy.get_param('arm_tracker/gripper_open_angle',  -1.5708)
+        self._gripper_cmd_val = 0.0   # latest 0..1 command (start closed)
 
         if not self.enabled:
             rospy.loginfo("[arm_tracker] Tracking disabled in config — observe mode.")
 
         # Joint state subscriber — keeps q_current up to date for IK warm-start
-        rospy.Subscriber('/z1_gazebo/joint_states', JointState, self._joint_state_cb, queue_size=1)
-        rospy.Subscriber('/aruco/marker_pose',       PoseStamped, self._pose_cb,       queue_size=1)
-        rospy.Subscriber('/aruco/marker_detected',   Bool,        self._detected_cb,   queue_size=1)
+        rospy.Subscriber('/z1_gazebo/joint_states', JointState,  self._joint_state_cb, queue_size=1)
+        rospy.Subscriber('/hand/target_pose',        PoseStamped, self._pose_cb,        queue_size=1)
+        rospy.Subscriber('/hand/tracking_active',    Bool,        self._active_cb,      queue_size=1)
+        if self.enable_gripper:
+            rospy.Subscriber('/hand/gripper_cmd',    Float64,     self._gripper_cb,     queue_size=1)
 
         # One publisher per joint — matches IOROS topic order
         self.joint_pubs = None
@@ -110,6 +126,12 @@ class ArmTrackerNode:
             self.joint_pubs = [
                 rospy.Publisher(t, MotorCmd, queue_size=1) for t in JOINT_TOPICS
             ]
+
+        # Gripper command publisher — same UnitreeJointController/MotorCmd as joints
+        self.gripper_pub = None
+        if MSGS_AVAILABLE and self.enable_gripper:
+            self.gripper_pub = rospy.Publisher(
+                '/z1_gazebo/gripper_controller/command', MotorCmd, queue_size=1)
 
         # Arm model for IK — instantiate without loopOn() (no UDP connection)
         self.arm_model = None
@@ -123,7 +145,8 @@ class ArmTrackerNode:
 
         rospy.loginfo(f"[arm_tracker] Ready — fixed_x={self.fixed_x:.2f} m, "
                       f"Y∈[{self.y_min:.2f},{self.y_max:.2f}], "
-                      f"Z∈[{self.z_min:.2f},{self.z_max:.2f}]")
+                      f"Z∈[{self.z_min:.2f},{self.z_max:.2f}], "
+                      f"gripper={'on' if self.enable_gripper else 'off'}")
 
     # ------------------------------------------------------------------ callbacks
 
@@ -134,11 +157,15 @@ class ArmTrackerNode:
                     idx = msg.name.index(name)
                     self.q_current[i] = msg.position[idx]
 
-    def _detected_cb(self, msg):
-        self.marker_detected = msg.data
+    def _active_cb(self, msg):
+        self.tracking_active = msg.data
 
     def _pose_cb(self, msg):
         self.latest_pose = msg
+
+    def _gripper_cb(self, msg):
+        # incoming 0..1 (0=closed, 1=open); clamp for safety
+        self._gripper_cmd_val = self._clamp(msg.data, 0.0, 1.0)
 
     # ------------------------------------------------------------------ helpers
 
@@ -197,6 +224,21 @@ class ArmTrackerNode:
             cmd.Kd   = self.kd
             pub.publish(cmd)
 
+    def _send_gripper_command(self):
+        """Hold the gripper at the latest pinch-derived angle every loop, so it
+        keeps position even while the arm is frozen (clutch disengaged)."""
+        if self.gripper_pub is None:
+            return
+        q = self.gripper_closed + self._gripper_cmd_val * (self.gripper_open - self.gripper_closed)
+        cmd = MotorCmd()
+        cmd.mode = 10
+        cmd.q    = float(q)
+        cmd.dq   = 0.0
+        cmd.tau  = 0.0
+        cmd.Kp   = self.kp
+        cmd.Kd   = self.kd
+        self.gripper_pub.publish(cmd)
+
     # ------------------------------------------------------------------ main loop
 
     def run(self):
@@ -204,10 +246,11 @@ class ArmTrackerNode:
 
         while not rospy.is_shutdown():
             self._refresh_live_params()
-            if self.enabled and self.marker_detected and self.latest_pose is not None:
+            self._send_gripper_command()
+            if self.enabled and self.tracking_active and self.latest_pose is not None:
                 p = self.latest_pose.pose.position
 
-                # 2D tracking: hold X fixed, follow marker Y and Z only
+                # 2D tracking: hold X fixed, follow the hand target Y and Z only
                 # Low-pass filter smooths the target to prevent jerky motion
                 ty_raw = self._clamp(p.y + self.offset_y, self.y_min, self.y_max)
                 tz_raw = self._clamp(p.z + self.offset_z, self.z_min, self.z_max)
