@@ -77,4 +77,7 @@
     <node pkg="z1_hand_detector" type="hand_detector_node.py" name="hand_detector" output="screen"/>
     <node pkg="z1_arm_tracker" type="arm_tracker_node.py" name="arm_tracker" output="screen"/>
 
+    <!-- Optional scene props (gated by scene_objects/enabled in teleop.yaml) -->
+    <include file="$(find z1_teleop)/launch/scene_objects.launch"/>
+
 </launch>

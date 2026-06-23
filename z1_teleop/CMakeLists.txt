@@ -5,6 +5,6 @@ find_package(catkin REQUIRED)
 
 catkin_package()
 
-install(DIRECTORY launch worlds rviz xacro config scripts
+install(DIRECTORY launch worlds rviz xacro config scripts meshes
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )

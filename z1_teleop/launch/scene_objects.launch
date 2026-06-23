@@ -1,0 +1,11 @@
+<launch>
+    <!-- =====================================================================
+         Gazebo scene props (cubes / pyramids / cylinders). Included by every
+         station launch. The node self-gates on scene_objects/enabled in
+         teleop.yaml: when false it spawns nothing and exits, so including it
+         unconditionally is safe. Edit the scene_objects: block + relaunch to
+         change the props.
+         ===================================================================== -->
+    <node pkg="z1_teleop" type="scene_spawner_node.py" name="scene_spawner"
+          output="screen"/>
+</launch>

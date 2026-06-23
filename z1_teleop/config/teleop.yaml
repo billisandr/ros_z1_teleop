@@ -211,3 +211,38 @@ simulation:
   paused: true                   # start Gazebo paused (z1_unpause to release)
   gui: true
   headless: false
+
+
+# -----------------------------------------------------------------------------
+# Scene objects (Gazebo props) — spawned by scene_spawner_node
+# -----------------------------------------------------------------------------
+# A few cubes / pyramids / cylinders dropped into the world as interaction
+# targets (knock them over, or try to grasp them with the gripper on). Purely
+# cosmetic — they do not affect the hand tracking or control law.
+#
+#   enabled : MASTER true/false switch. false = clean arm-only scene.
+#   static  : true = props are bolted to the floor; false = the arm can push them.
+#   objects : list of props. Each prop is:
+#       name  : unique Gazebo model name
+#       type  : box | cylinder | pyramid
+#       size  : box      -> [size_x, size_y, size_z]   (m)
+#               cylinder -> [radius, length]           (m, axis = vertical)
+#               pyramid  -> [base_x, base_y, height]   (m)
+#       pose  : [x, y, z] world position (m). z is an OFFSET above the prop's
+#               resting height, so z: 0 sits flush on the ground for any size.
+#       yaw   : rotation about vertical (degrees, optional, default 0)
+#       color : [r, g, b] each 0..1 (optional, default grey)
+#       mass  : kg (optional, default 0.15; ignored when static)
+#
+# Tip: keep props inside the arm's reach (x ~ 0.30-0.55, see arm_tracker/workspace)
+# if you want to interact with them. Edit + relaunch to apply (they spawn once).
+scene_objects:
+  enabled: true
+  static: false
+  objects:
+    - {name: cube_red,     type: box,      size: [0.05, 0.05, 0.05], pose: [0.45,  0.18, 0.0], yaw: 20,  color: [0.85, 0.18, 0.18], mass: 0.15}
+    - {name: cube_green,   type: box,      size: [0.06, 0.06, 0.06], pose: [0.40, -0.22, 0.0], yaw: -15, color: [0.20, 0.70, 0.25], mass: 0.20}
+    - {name: cyl_blue,     type: cylinder, size: [0.03, 0.10],       pose: [0.52, -0.05, 0.0], color: [0.20, 0.45, 0.85], mass: 0.18}
+    - {name: cyl_orange,   type: cylinder, size: [0.025, 0.08],      pose: [0.34,  0.10, 0.0], color: [0.95, 0.55, 0.10], mass: 0.12}
+    - {name: pyramid_gold, type: pyramid,  size: [0.08, 0.08, 0.10], pose: [0.50,  0.27, 0.0], yaw: 30,  color: [0.95, 0.82, 0.12], mass: 0.15}
+    - {name: pyramid_violet,type: pyramid, size: [0.07, 0.07, 0.09], pose: [0.30, -0.05, 0.0], color: [0.55, 0.25, 0.70], mass: 0.13}

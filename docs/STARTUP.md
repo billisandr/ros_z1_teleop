@@ -65,7 +65,7 @@ Gazebo starts paused — `z1_unpause` to release. `z1_rviz` opens the layout.
 ### What auto-starts in `z1_teleop_sim.launch`
 Gazebo (`teleop.world`, arm only) · the Z1 URDF + joint/gripper controllers ·
 `robot_state_publisher` · `image_source_node` (webcam/video) · `hand_detector_node`
-· `arm_tracker_node`.
+· `arm_tracker_node` · `scene_spawner_node` (props, if `scene_objects/enabled`).
 
 ### Useful launch arguments
 
@@ -85,8 +85,14 @@ roslaunch z1_teleop z1_teleop_sim.launch   # then edit arm_tracker/enable_grippe
 
 All knobs are in [../z1_teleop/config/teleop.yaml](../z1_teleop/config/teleop.yaml):
 `control`, `hand`, `mapping`, `gesture`, `smoothing`, `camera`, `zed_camera`,
-`arm_tracker`, `joint_limits`, `joint_mirror`, `simulation`. See the README
-configuration table.
+`arm_tracker`, `joint_limits`, `joint_mirror`, `simulation`, `scene_objects`. See
+the README configuration table.
+
+**Scene props:** `scene_objects/enabled: true|false` toggles a few cubes /
+pyramids / cylinders dropped into the world as interaction targets (spawned by
+`scene_spawner_node` from the `scene_objects:` list). Set `enabled: false` for a
+clean arm-only scene, `static: true` to bolt them down. Props spawn once at
+launch, so edit the list and relaunch to change them.
 
 **Tune live without restarting:** run `z1_ui` (browser control panel on port 8501;
 start the container with `-p 8501:8501`). It sets ROS params and the nodes re-read

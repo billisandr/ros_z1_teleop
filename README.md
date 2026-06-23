@@ -230,6 +230,7 @@ loaded at launch. Highlights:
 | `gesture` | `lost_frames`, `hysteresis_frames` | freeze / flicker control |
 | `smoothing` | `min_cutoff`, `beta` | OneEuro filter on (u,v) |
 | `arm_tracker` | `workspace`, `smoothing_alpha`, `enable_gripper` | control limits + gripper |
+| `scene_objects` | `enabled`, `static`, `objects` | spawn cubes/pyramids/cylinders as interaction props (`enabled: false` = clean scene) |
 
 Edit the YAML and relaunch (or `docker cp` it into a running container) — no
 rebuild needed.
