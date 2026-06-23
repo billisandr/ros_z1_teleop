@@ -1,0 +1,15 @@
+# Core (always needed)
+mediapipe
+opencv-python
+numpy
+matplotlib
+pyyaml
+
+# Optional, needed only if you turn on a toggle in config.yaml:
+#   depth_anything.enabled  -> Depth Anything V2
+#   localize.enabled        -> Grounding DINO (default) or LocateAnything-3B
+# All three run through torch + transformers.
+# torch
+# transformers
+# pillow
+# accelerate

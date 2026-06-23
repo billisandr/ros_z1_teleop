@@ -1,0 +1,12 @@
+
+# Build artifacts
+*/build/
+catkin_ws/
+*.so
+*.o
+
+# ROS
+*.pyc
+__pycache__/
+devel/
+install/

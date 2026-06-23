@@ -1,0 +1,273 @@
+Panels:
+  - Class: rviz/Displays
+    Help Height: 70
+    Name: Displays
+    Property Tree Widget:
+      Expanded: ~
+      Splitter Ratio: 0.5
+    Tree Height: 509
+  - Class: rviz/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+Preferences:
+  PromptSaveOnExit: true
+Toolbars:
+  toolButtonStyle: 2
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.5
+      Cell Size: 0.5
+      Class: rviz/Grid
+      Color: 160; 160; 164
+      Enabled: true
+      Line Style:
+        Line Width: 0.029999999329447746
+        Value: Lines
+      Name: Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 20
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: true
+      Enabled: true
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+        camera_color_optical_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        gripperMover:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        gripperStator:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        link00:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        link01:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        link02:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        link03:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        link04:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        link05:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        link06:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        world:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+      Name: Z1 Robot Model
+      Robot Description: robot_description
+      TF Prefix: ""
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
+    - Class: rviz/TF
+      Enabled: true
+      Filter (blacklist): ""
+      Filter (whitelist): ""
+      Frame Timeout: 15
+      Frames:
+        All Enabled: true
+        camera_color_optical_frame:
+          Value: true
+        gripperMover:
+          Value: true
+        gripperStator:
+          Value: true
+        link00:
+          Value: true
+        link01:
+          Value: true
+        link02:
+          Value: true
+        link03:
+          Value: true
+        link04:
+          Value: true
+        link05:
+          Value: true
+        link06:
+          Value: true
+        world:
+          Value: true
+      Marker Alpha: 1
+      Marker Scale: 0.20000000298023224
+      Name: TF Frames
+      Show Arrows: false
+      Show Axes: true
+      Show Names: true
+      Tree:
+        world:
+          link00:
+            link01:
+              link02:
+                link03:
+                  link04:
+                    link05:
+                      link06:
+                        camera_color_optical_frame:
+                          {}
+                        gripperStator:
+                          gripperMover:
+                            {}
+      Update Interval: 0
+      Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.10000000149011612
+      Class: rviz/Pose
+      Color: 255; 60; 0
+      Enabled: true
+      Head Length: 0.03999999910593033
+      Head Radius: 0.029999999329447746
+      Name: ArUco Marker Pose
+      Queue Size: 5
+      Shaft Length: 0.11999999731779099
+      Shaft Radius: 0.014999999664723873
+      Shape: Arrow
+      Topic: /aruco/marker_pose
+      Unreliable: false
+      Value: true
+    - Class: rviz/Marker
+      Enabled: false
+      Marker Topic: /visualization_marker
+      Name: Gazebo Model States (markers)
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: false
+    - Class: rviz/Image
+      Enabled: true
+      Image Topic: /aruco/debug_image
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: Camera — ArUco Overlay
+      Normalize Range: true
+      Queue Size: 2
+      Transport Hint: raw
+      Unreliable: false
+      Value: true
+    - Class: rviz/Image
+      Enabled: false
+      Image Topic: /camera/color/image_raw
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: Camera — Raw Feed
+      Normalize Range: true
+      Queue Size: 2
+      Transport Hint: raw
+      Unreliable: false
+      Value: false
+    - Alpha: 1
+      Class: rviz/Axes
+      Enabled: true
+      Length: 0.15000000596046448
+      Name: Camera Frame Axes
+      Radius: 0.00800000037997961
+      Reference Frame: camera_color_optical_frame
+      Show Trail: false
+      Value: true
+    - Alpha: 1
+      Class: rviz/Axes
+      Enabled: true
+      Length: 0.11999999731779099
+      Name: Wrist (link06) Axes
+      Radius: 0.007000000216066837
+      Reference Frame: link06
+      Show Trail: false
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 40; 40; 40
+    Default Light: true
+    Fixed Frame: world
+    Frame Rate: 30
+  Name: root
+  Tools: ~
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 2.200000047683716
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.05999999865889549
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Field of View: 0.7853981852531433
+      Focal Point:
+        X: 0.3499999940395355
+        Y: 0
+        Z: 0.3499999940395355
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05000000074505806
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 0.550000011920929
+      Target Frame: <Fixed Frame>
+      Yaw: 3.8499999046325684
+    Saved: ~
+Window Geometry:
+  Camera — ArUco Overlay:
+    collapsed: false
+  Camera — Raw Feed:
+    collapsed: false
+  Displays:
+    collapsed: false
+  Height: 1011
+  Hide Left Dock: false
+  Hide Right Dock: false
+  QMainWindow State: 000000ff00000000fd0000000200000000000001560000039dfc0200000004fb0000002200430061006d00650072006100202014002000520061007700200046006500650064000000003b000000220000001600fffffffb0000002c00430061006d0065007200610020201400200041007200550063006f0020004f007600650072006c00610079010000003b000001190000001600fffffffb000000100044006900730070006c006100790073010000015a0000027e000000c700fffffffb0000000c00430061006d006500720061000000030d000000cb000000000000000000000001000001040000039dfc0200000001fb0000000a00560069006500770073010000003b0000039d000000a000ffffff000004d80000039d00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Views:
+    collapsed: false
+  Width: 1854
+  X: 66
+  Y: 32

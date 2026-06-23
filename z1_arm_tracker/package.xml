@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>z1_arm_tracker</name>
+  <version>0.1.0</version>
+  <description>Commands the Z1 arm to track the ArUco marker via the SDK UDP interface</description>
+  <maintainer email="user@example.com">user</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+</package>

@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>z1_teleop</name>
+  <version>1.0.0</version>
+  <description>
+    Project-specific launch files, worlds, RViz config, and URDF extensions for the
+    Z1 hand-teleoperation station (the arm follows a human hand seen by a camera).
+    Kept separate from the unitree_ros submodule so all project files can be tracked
+    in the parent repository.
+  </description>
+  <maintainer email="user@example.com">rosuser</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>gazebo_ros</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>z1_description</exec_depend>
+  <exec_depend>z1_hand_detector</exec_depend>
+  <exec_depend>z1_arm_tracker</exec_depend>
+  <exec_depend>realsense2_camera</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+</package>

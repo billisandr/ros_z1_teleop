@@ -1,0 +1,36 @@
+.git
+**/.git
+**/build/
+**/devel/
+**/install/
+**/__pycache__/
+*.pyc
+
+# unitree_ros bundles description packages for every Unitree robot; this
+# project only uses the Z1 arm (z1_description), the rest is ~1.9GB of
+# unused meshes/URDF for other robots (a1, b1, b2, g1, h1, go1, go2, etc.)
+unitree_ros/robots/a1_description/
+unitree_ros/robots/a2_description/
+unitree_ros/robots/aliengo_description/
+unitree_ros/robots/aliengoZ1_description/
+unitree_ros/robots/as2_description/
+unitree_ros/robots/b1_description/
+unitree_ros/robots/b2_description/
+unitree_ros/robots/b2_description_mujoco/
+unitree_ros/robots/b2w_description/
+unitree_ros/robots/dexterous_hand_description/
+unitree_ros/robots/g1_description/
+unitree_ros/robots/g1_d_description/
+unitree_ros/robots/g1_with_brainco_hand/
+unitree_ros/robots/go1_description/
+unitree_ros/robots/go2_description/
+unitree_ros/robots/go2w_description/
+unitree_ros/robots/h1_description/
+unitree_ros/robots/h1_2_description/
+unitree_ros/robots/h2_description/
+unitree_ros/robots/laikago_description/
+unitree_ros/robots/r1_description/
+unitree_ros/robots/r1_air_description/
+
+# z1_controller prebuilt hardware binaries; rebuilt from source in the image
+z1_controller/deploy/

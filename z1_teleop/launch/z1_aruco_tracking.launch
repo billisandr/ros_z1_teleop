@@ -1,0 +1,90 @@
+<launch>
+    <env name="GAZEBO_MODEL_PATH" value="$(find z1_aruco)/models:$(optenv GAZEBO_MODEL_PATH)"/>
+
+    <!-- Load user config into ROS parameter server — nodes read params from here at runtime -->
+    <rosparam file="$(find z1_aruco)/config/aruco_tracking.yaml" command="load"/>
+
+    <arg name="rname"          default="z1"/>
+    <arg name="robot_path"     value="(find $(arg rname)_description)"/>
+    <arg name="dollar"         value="$"/>
+    <arg name="debug"          default="false"/>
+    <arg name="UnitreeGripperYN" default="true"/>
+    <arg name="use_sim_time"   default="true"/>
+    <arg name="paused"         default="true"/>
+    <arg name="gui"            default="true"/>
+    <arg name="headless"       default="false"/>
+    <!-- Camera mode: 'end_effector' (camera in URDF, moves with arm)
+                   or 'fixed'        (static Gazebo model + static TF)
+         Must match camera/mode in aruco_tracking.yaml -->
+    <arg name="camera_mode"          default="end_effector"/>
+    <!-- Derived arg — passed to xacro to conditionally add the wrist camera link -->
+    <arg name="end_effector_camera"  default="$(eval 'true' if arg('camera_mode') == 'end_effector' else 'false')"/>
+
+    <!-- Gazebo world -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name"   value="$(find z1_aruco)/worlds/aruco_tracking.world"/>
+        <arg name="debug"        value="$(arg debug)"/>
+        <arg name="gui"          value="$(arg gui)"/>
+        <arg name="paused"       value="$(arg paused)"/>
+        <arg name="headless"     value="$(arg headless)"/>
+        <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    </include>
+
+    <!-- Load the Z1 URDF from z1_aruco/xacro — our copy with EndEffectorCamera + CameraPlugin args -->
+    <param name="robot_description"
+           command="$(find xacro)/xacro --inorder '$(find z1_aruco)/xacro/z1_aruco_robot.xacro'
+           UnitreeGripper:=$(arg UnitreeGripperYN)
+           EndEffectorCamera:=$(arg end_effector_camera)"/>
+
+    <!-- Spawn the Z1 arm -->
+    <node pkg="gazebo_ros" type="spawn_model" name="urdf_spawner" respawn="false" output="screen"
+          args="-urdf -z 0.0 -model $(arg rname)_gazebo -param robot_description -unpause"/>
+
+    <!-- Load joint controller config -->
+    <rosparam file="$(arg dollar)$(arg robot_path)/config/robot_control.yaml" command="load"/>
+
+    <!-- Spawn joint controllers -->
+    <group unless="$(arg UnitreeGripperYN)">
+        <node pkg="controller_manager" type="spawner" name="controller_spawner" respawn="false"
+            output="screen" ns="/$(arg rname)_gazebo" args="joint_state_controller
+            Joint01_controller Joint02_controller Joint03_controller
+            Joint04_controller Joint05_controller Joint06_controller"/>
+    </group>
+    <group if="$(arg UnitreeGripperYN)">
+        <node pkg="controller_manager" type="spawner" name="controller_spawner" respawn="false"
+            output="screen" ns="/$(arg rname)_gazebo" args="joint_state_controller
+            Joint01_controller Joint02_controller Joint03_controller
+            Joint04_controller Joint05_controller Joint06_controller
+            gripper_controller"/>
+    </group>
+
+    <!-- Robot state publisher -->
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher"
+          respawn="false" output="screen">
+        <remap from="/joint_states" to="/$(arg rname)_gazebo/joint_states"/>
+    </node>
+
+    <!-- fixed mode only: spawn RealSense model + static TF -->
+    <node if="$(eval arg('camera_mode') == 'fixed')"
+          pkg="gazebo_ros" type="spawn_model" name="spawn_realsense" respawn="false"
+          args="-sdf -model realsense_d435
+                -file $(find z1_aruco)/models/realsense_d435/model.sdf
+                -x 1.5 -y 0.0 -z 1.2 -R 0.0 -P 0.436 -Y 3.1415"/>
+
+    <node if="$(eval arg('camera_mode') == 'fixed')"
+          pkg="tf2_ros" type="static_transform_publisher" name="camera_tf_pub"
+          args="1.5 0 1.2 3.1415 0.436 0 world camera_color_optical_frame"/>
+
+    <!-- ArUco detector -->
+    <node pkg="z1_aruco_detector" type="aruco_detector_node.py" name="aruco_detector"
+          output="screen"/>
+
+    <!-- Marker mover -->
+    <node pkg="z1_aruco_detector" type="marker_mover_node.py" name="marker_mover"
+          output="screen"/>
+
+    <!-- Arm tracker -->
+    <node pkg="z1_arm_tracker" type="arm_tracker_node.py" name="arm_tracker"
+          output="screen"/>
+
+</launch>

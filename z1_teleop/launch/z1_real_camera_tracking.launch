@@ -1,0 +1,93 @@
+<launch>
+    <env name="GAZEBO_MODEL_PATH" value="$(find z1_aruco)/models:$(optenv GAZEBO_MODEL_PATH)"/>
+
+    <!-- Load config into ROS parameter server -->
+    <rosparam file="$(find z1_aruco)/config/aruco_tracking.yaml" command="load"/>
+
+    <arg name="rname"            default="z1"/>
+    <arg name="robot_path"       value="(find $(arg rname)_description)"/>
+    <arg name="dollar"           value="$"/>
+    <arg name="debug"            default="false"/>
+    <arg name="UnitreeGripperYN" default="true"/>
+    <arg name="use_sim_time"     default="false"/>
+    <arg name="paused"           default="true"/>
+    <arg name="gui"              default="true"/>
+    <arg name="headless"         default="false"/>
+
+    <!-- Real D435 serial number — leave empty to use the first connected device -->
+    <arg name="realsense_serial" default=""/>
+
+    <!-- Gazebo world — no ArUco marker model, no virtual camera -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name"   value="$(find z1_aruco)/worlds/aruco_tracking_real.world"/>
+        <arg name="debug"        value="$(arg debug)"/>
+        <arg name="gui"          value="$(arg gui)"/>
+        <arg name="paused"       value="$(arg paused)"/>
+        <arg name="headless"     value="$(arg headless)"/>
+        <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    </include>
+
+    <!-- Load the Z1 URDF from z1_aruco/xacro — our copy with EndEffectorCamera + CameraPlugin args.
+         EndEffectorCamera:=true  — camera_color_optical_frame stays in the kinematic chain.
+         CameraPlugin:=false      — Gazebo sensor plugin suppressed; real D435 provides images. -->
+    <param name="robot_description"
+           command="$(find xacro)/xacro --inorder '$(find z1_aruco)/xacro/z1_aruco_robot.xacro'
+           UnitreeGripper:=$(arg UnitreeGripperYN)
+           EndEffectorCamera:=true
+           CameraPlugin:=false"/>
+
+    <!-- Spawn the Z1 arm -->
+    <node pkg="gazebo_ros" type="spawn_model" name="urdf_spawner" respawn="false" output="screen"
+          args="-urdf -z 0.0 -model $(arg rname)_gazebo -param robot_description -unpause"/>
+
+    <!-- Load joint controller config -->
+    <rosparam file="$(arg dollar)$(arg robot_path)/config/robot_control.yaml" command="load"/>
+
+    <!-- Spawn joint controllers -->
+    <group unless="$(arg UnitreeGripperYN)">
+        <node pkg="controller_manager" type="spawner" name="controller_spawner" respawn="false"
+            output="screen" ns="/$(arg rname)_gazebo" args="joint_state_controller
+            Joint01_controller Joint02_controller Joint03_controller
+            Joint04_controller Joint05_controller Joint06_controller"/>
+    </group>
+    <group if="$(arg UnitreeGripperYN)">
+        <node pkg="controller_manager" type="spawner" name="controller_spawner" respawn="false"
+            output="screen" ns="/$(arg rname)_gazebo" args="joint_state_controller
+            Joint01_controller Joint02_controller Joint03_controller
+            Joint04_controller Joint05_controller Joint06_controller
+            gripper_controller"/>
+    </group>
+
+    <!-- Robot state publisher — broadcasts TF including camera_color_optical_frame → link06 -->
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher"
+          respawn="false" output="screen">
+        <remap from="/joint_states" to="/$(arg rname)_gazebo/joint_states"/>
+    </node>
+
+    <!-- RealSense D435 driver.
+         publish_tf:=false — disables the driver's own TF tree to prevent conflict with
+         robot_state_publisher's camera_color_optical_frame (child of link06 via URDF). -->
+    <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+        <arg name="serial_no"           value="$(arg realsense_serial)"/>
+        <arg name="camera"              value="camera"/>
+        <arg name="color_width"         value="640"/>
+        <arg name="color_height"        value="480"/>
+        <arg name="color_fps"           value="30"/>
+        <arg name="enable_depth"        value="false"/>
+        <arg name="enable_infra1"       value="false"/>
+        <arg name="enable_infra2"       value="false"/>
+        <arg name="enable_gyro"         value="false"/>
+        <arg name="enable_accel"        value="false"/>
+        <arg name="align_depth"         value="false"/>
+        <arg name="publish_tf"          value="false"/>
+    </include>
+
+    <!-- ArUco detector -->
+    <node pkg="z1_aruco_detector" type="aruco_detector_node.py" name="aruco_detector"
+          output="screen"/>
+
+    <!-- Arm tracker -->
+    <node pkg="z1_arm_tracker" type="arm_tracker_node.py" name="arm_tracker"
+          output="screen"/>
+
+</launch>
