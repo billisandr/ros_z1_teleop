@@ -5,6 +5,12 @@ Full details: [QUICKSTART.md](QUICKSTART.md).
 
 Cheat sheet: **open palm to drive, fist to freeze, show your right hand.**
 
+Two ways to feed the camera:
+- **Variation A** — hardware-free looping **video file** (zero camera, always works).
+- **Variation B** — a **real ZED 2 / RealSense over `usbipd` USB forwarding** (the
+  same bind/attach/`uvcvideo` path as the ArUco repo, wrapped in `start_teleop.sh`).
+  This is the recommended real-camera path on Windows.
+
 ## 0. Build the image (once)
 
 ```powershell
@@ -59,20 +65,34 @@ docker exec -e DISPLAY=host.docker.internal:0.0 -it ros-z1-teleop bash -ic "z1_c
 
 ---
 
-## 3. Variation B — ZED 2 real-camera teleop
+## 3. Variation B — real camera over usbipd (ZED 2 / RealSense)
 
-**Terminal 1** — one-shot script (VcXsrv check, `usbipd` bind/attach, `uvcvideo`
-reload, container start, auto-opens RViz). Run from Git Bash, not the WSL `bash`:
+`start_teleop.sh` does the whole Windows USB-forwarding dance for you — VcXsrv
+check, `usbipd bind`/`attach` of the camera into WSL2, `uvcvideo` reload, then
+`docker run` with `--device /dev/bus/usb/<bus>` + `/dev/video0` + `/dev/video1`,
+and finally auto-opens RViz. (First-time `usbipd bind` needs an **Administrator**
+Git Bash.)
+
+**Terminal 1** — run from Git Bash on the host, **not** the WSL `bash`:
 
 ```powershell
 & "C:\Program Files\Git\bin\bash.exe" ./start_teleop.sh
+# headless (no Gazebo GUI):  ./start_teleop.sh z1_teleop_zed_headless
 ```
+
+Defaults to the ZED 2 (`z1_teleop_zed` → `zed_camera_node`). For a D435 instead,
+edit `DEVICE_NAME="RealSense"` in the script and pass `z1_teleop_realsense`. ZED
+resolution/fps/eye come from the `zed_camera:` block in `teleop.yaml` — use
+`1344x376@15fps` (the only mode confirmed corruption-free over usbipd).
 
 **Terminal 2** — unpause physics:
 
 ```powershell
 docker exec -it ros-z1-teleop bash -ic "z1_unpause"
 ```
+
+> Prefer to drive the USB steps yourself? The full manual `usbipd list` /
+> `bind` / `attach` / `uvcvideo` sequence is in [DOCKER_CMDS.md](DOCKER_CMDS.md).
 
 ---
 

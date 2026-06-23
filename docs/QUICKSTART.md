@@ -91,19 +91,31 @@ file (mode A) or the ZED path (mode C).
 
 ---
 
-## 6. Run mode C — ZED 2 over USB (recommended on Windows)
+## 6. Run mode C — real camera over usbipd (ZED 2 / RealSense, recommended on Windows)
 
-From **Git Bash on the Windows host** (not WSL, not inside the container):
+On Windows, a USB camera reaches the container only after it is forwarded into the
+Docker Desktop WSL2 VM with **`usbipd-win`** — the same mechanism the ArUco repo
+used. `start_teleop.sh` automates the whole sequence:
+
+1. verifies VcXsrv is running with `-wgl`;
+2. `usbipd bind` + `usbipd attach --wsl` the camera into WSL2;
+3. loads `uvcvideo` in the `docker-desktop` VM and resolves the live USB bus;
+4. `docker run` with `--device /dev/bus/usb/<bus>` + `/dev/video0` + `/dev/video1`;
+5. waits for ROS, then opens RViz.
+
+Run it from **Git Bash on the Windows host** (not WSL, not inside the container).
+First-time `usbipd bind` needs an **Administrator** Git Bash:
 
 ```bash
-bash start_teleop.sh           # default alias: z1_teleop_zed
-# headless (no Gazebo GUI):
-bash start_teleop.sh z1_teleop_zed_headless
+bash start_teleop.sh                       # default alias: z1_teleop_zed (ZED 2 bridge)
+bash start_teleop.sh z1_teleop_zed_headless   # no Gazebo GUI
 ```
 
-The script: verifies VcXsrv (`-wgl`), binds + attaches the ZED via `usbipd`,
-loads `uvcvideo` in the docker-desktop VM, starts the container, then opens RViz.
-First-time `usbipd bind` needs an **Administrator** Git Bash.
+The launch sets `hand/image_source: external` so the camera node owns
+`/camera/color/image_raw`; `z1_teleop_zed` runs `zed_camera_node` (raw UVC, no ZED
+SDK). For a **RealSense D435** instead, set `DEVICE_NAME="RealSense"` in
+`start_teleop.sh` and launch `z1_teleop_realsense` (runs the `realsense2_camera`
+driver) — the usbipd/`--device` forwarding is identical.
 
 Then unpause physics:
 
@@ -111,8 +123,10 @@ Then unpause physics:
 docker exec -it ros-z1-teleop bash -ic "z1_unpause"
 ```
 
-ZED device/resolution/fps/eye come from the `zed_camera:` block in
-`teleop.yaml` — use `1344x376@15fps` (corruption-free over usbipd).
+ZED device/resolution/fps/eye come from the `zed_camera:` block in `teleop.yaml`
+— use `1344x376@15fps` (the only mode confirmed corruption-free over usbipd; higher
+bandwidth corrupts over USB-over-IP). To drive the `usbipd` steps manually instead
+of via the script, see [DOCKER_CMDS.md](DOCKER_CMDS.md).
 
 ---
 
