@@ -1,52 +1,25 @@
 #!/usr/bin/env bash
 # Checks/repairs VcXsrv, ZED 2 USB passthrough (usbipd-win + WSL2), then launches
-# the ZED real-camera Gazebo simulation and auto-opens RViz once ROS is up.
+# the Z1 hand-teleop station fed by the physical ZED 2, and auto-opens RViz once
+# ROS is up.
 #
 # Run from Git Bash ON THE WINDOWS HOST (not inside WSL or the container).
 # `usbipd bind` requires an elevated (Administrator) shell the first time a
 # device is bound — re-run from an admin Git Bash if that step fails.
 #
-# Usage: bash start_zed_sim.sh [options] [launch_alias]
-#   --dictionary NAME    ArUco dictionary (default: DICT_5X5_50 — NOTE: this differs from
-#                        aruco_tracking.yaml's own default of DICT_4X4_50; this script
-#                        always passes --dictionary explicitly, overriding the yaml)
-#                        One of: DICT_4X4_50 DICT_4X4_100 DICT_5X5_50 DICT_6X6_250 DICT_7X7_1000
-#   --marker-size METRES Physical marker size in metres, border included (default: 0.05)
-#   --tracking-id ID     Marker ID the arm follows — must be one of your printed markers'
-#                        IDs (default: 0). aruco_tracking.yaml's marker_ids list is
-#                        documentation only; the detector only ever tracks this one ID.
-#   launch_alias         Defaults to z1_real_zed (pass z1_real_zed_headless to skip the GUI)
+# Usage: bash start_teleop.sh [launch_alias]
+#   launch_alias   Defaults to z1_teleop_zed (pass z1_teleop_zed_headless to skip the GUI)
 #
-# Example for 3cm DICT_5X5_50 markers with IDs 0 and 1, tracking ID 1:
-#   bash start_zed_sim.sh --dictionary DICT_5X5_50 --marker-size 0.03 --tracking-id 1
+# This script handles the ZED real-camera path specifically (USB passthrough is
+# its whole reason to exist). For the hardware-free webcam/video path, just run
+# the sim launch directly — no USB dance needed, e.g.:
+#   docker run -it --rm -e DISPLAY=host.docker.internal:0.0 ros-z1-teleop \
+#       bash -ic "z1_teleop image_source:=video:/path/to/hand.mp4"
 #
 # Background on each check: docs/DOCKER_CMDS.md — Diagnosing corrupted video
 # over usbipd (Windows), and the README Troubleshooting table.
 
 set -euo pipefail
-
-VALID_DICTIONARIES="DICT_4X4_50 DICT_4X4_100 DICT_5X5_50 DICT_6X6_250 DICT_7X7_1000"
-ARUCO_DICTIONARY="DICT_5X5_50"
-ARUCO_MARKER_SIZE="0.05"
-ARUCO_TRACKING_ID="0"
-
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --dictionary)
-            ARUCO_DICTIONARY="$2"; shift 2 ;;
-        --marker-size)
-            ARUCO_MARKER_SIZE="$2"; shift 2 ;;
-        --tracking-id)
-            ARUCO_TRACKING_ID="$2"; shift 2 ;;
-        *)
-            break ;;
-    esac
-done
-
-case " $VALID_DICTIONARIES " in
-    *" $ARUCO_DICTIONARY "*) ;;
-    *) echo "[start_zed_sim] ERROR: --dictionary must be one of: $VALID_DICTIONARIES" >&2; exit 1 ;;
-esac
 
 # Git Bash auto-converts POSIX-looking arguments (/dev/video0, /dev/bus/usb/...)
 # into Windows paths before handing them to native .exe tools — this corrupts
@@ -58,14 +31,13 @@ export MSYS_NO_PATHCONV=1
 
 USBIPD="/c/Program Files/usbipd-win/usbipd.exe"
 VCXSRV="/c/Program Files/VcXsrv/vcxsrv.exe"
-IMAGE="ros-z1-aruco-real"
-CONTAINER="ros-z1-real"
+IMAGE="ros-z1-teleop"
+CONTAINER="ros-z1-teleop"
 DEVICE_NAME="ZED 2"          # change to "RealSense" to adapt this script for the D435
-LAUNCH_ALIAS="${1:-z1_real_zed}"
-LAUNCH_ARGS="aruco_dictionary:=$ARUCO_DICTIONARY aruco_marker_size:=$ARUCO_MARKER_SIZE aruco_tracking_id:=$ARUCO_TRACKING_ID"
+LAUNCH_ALIAS="${1:-z1_teleop_zed}"
 
-log() { echo "[start_zed_sim] $*"; }
-die() { echo "[start_zed_sim] ERROR: $*" >&2; exit 1; }
+log() { echo "[start_teleop] $*"; }
+die() { echo "[start_teleop] ERROR: $*" >&2; exit 1; }
 
 # --- 0. Docker must be up ----------------------------------------------------
 docker info >/dev/null 2>&1 || die "Docker Desktop doesn't appear to be running."
@@ -144,7 +116,7 @@ wsl -d docker-desktop -- test -d "/dev/bus/usb/$USB_BUS" 2>/dev/null \
 
 log "$DEVICE_NAME is on bus $USB_BUS inside docker-desktop, /dev/video0 present — OK"
 
-# --- 4. Launch the simulation ------------------------------------------------
+# --- 4. Launch the station ---------------------------------------------------
 if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
     log "Removing existing '$CONTAINER' container"
     docker rm -f "$CONTAINER" >/dev/null
@@ -160,7 +132,7 @@ fi
 # container explicitly instead of leaving it running orphaned.
 trap 'log "Stopping container..."; docker stop "$CONTAINER" >/dev/null 2>&1' EXIT INT TERM
 
-log "Starting container, launching '$LAUNCH_ALIAS' ($ARUCO_DICTIONARY, ${ARUCO_MARKER_SIZE}m, tracking ID $ARUCO_TRACKING_ID)"
+log "Starting container, launching '$LAUNCH_ALIAS' (ZED 2 hand-teleop)"
 docker run -d --rm \
     --name "$CONTAINER" \
     -e DISPLAY=host.docker.internal:0.0 \
@@ -168,7 +140,7 @@ docker run -d --rm \
     --device /dev/video0:/dev/video0 \
     --device /dev/video1:/dev/video1 \
     --user root \
-    "$IMAGE" bash -ic "$LAUNCH_ALIAS $LAUNCH_ARGS" >/dev/null
+    "$IMAGE" bash -ic "$LAUNCH_ALIAS" >/dev/null
 
 # Open RViz once ROS is up inside the container (mirrors the manual
 # "Terminal 2" step in the README Quick Start). Runs after the container
@@ -183,7 +155,7 @@ for _ in $(seq 1 60); do
 done
 docker exec -it --user root -e DISPLAY=host.docker.internal:0.0 "$CONTAINER" bash -ic "z1_rviz"
 
-# RViz closed — follow the simulation's own logs so the terminal stays
+# RViz closed — follow the station's own logs so the terminal stays
 # attached to something meaningful; Ctrl+C here triggers the trap above.
-log "RViz closed. Following container logs (Ctrl+C stops the simulation)..."
+log "RViz closed. Following container logs (Ctrl+C stops the station)..."
 docker logs -f "$CONTAINER"

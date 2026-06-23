@@ -91,10 +91,10 @@ docker run -it --rm \
 
 # Mount multiple directories (one -v per path)
 docker run -it --rm \
-  -v /home/sense/ros_docker/z1_aruco_detector:/home/rosuser/catkin_ws/src/z1_aruco_detector \
+  -v /home/sense/ros_docker/z1_hand_detector:/home/rosuser/catkin_ws/src/z1_hand_detector \
   -v /home/sense/ros_docker/z1_arm_tracker:/home/rosuser/catkin_ws/src/z1_arm_tracker \
-  -v /home/sense/ros_docker/z1_aruco:/home/rosuser/catkin_ws/src/z1_aruco \
-  ros-z1 bash
+  -v /home/sense/ros_docker/z1_teleop:/home/rosuser/catkin_ws/src/z1_teleop \
+  ros-z1-teleop bash
 
 # Mount as read-only (container cannot write back to host)
 docker run -it --rm \
@@ -183,11 +183,11 @@ Then pass only that bus (cleaner than exposing all buses):
 
 ```bash
 docker run -it --rm \
-  --name ros-z1-real \
+  --name ros-z1-teleop \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   --device /dev/bus/usb/004:/dev/bus/usb/004 \
-  ros-z1-aruco-real bash
+  ros-z1-teleop bash
 ```
 
 If the bus number changes after a replug, recheck with `lsusb` and update the path.
@@ -198,11 +198,11 @@ Unplug and replug the D435 after reloading rules. As a fallback, use `--privileg
 ```bash
 # Fallback — full device access (workshop / dev use only)
 docker run -it --rm \
-  --name ros-z1-real \
+  --name ros-z1-teleop \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   --privileged \
-  ros-z1-aruco-real bash
+  ros-z1-teleop bash
 ```
 
 ### Windows
@@ -278,14 +278,14 @@ fails with a permission/open error even though the device is correctly
 passed through:
 
 ```powershell
-docker run -it --rm --name ros-z1-real -e DISPLAY=host.docker.internal:0.0 --device /dev/bus/usb/002:/dev/bus/usb/002 --device /dev/video0:/dev/video0 --device /dev/video1:/dev/video1 --user root ros-z1-aruco-real bash
+docker run -it --rm --name ros-z1-teleop -e DISPLAY=host.docker.internal:0.0 --device /dev/bus/usb/002:/dev/bus/usb/002 --device /dev/video0:/dev/video0 --device /dev/video1:/dev/video1 --user root ros-z1-teleop bash
 ```
 
 If `usbipd attach` succeeds but the container still reports
 `RS2_USB_STATUS_ACCESS`, fall back to `--privileged` (workshop / dev use only):
 
 ```powershell
-docker run -it --rm --name ros-z1-real -e DISPLAY=host.docker.internal:0.0 --privileged ros-z1-aruco-real bash
+docker run -it --rm --name ros-z1-teleop -e DISPLAY=host.docker.internal:0.0 --privileged ros-z1-teleop bash
 ```
 
 **Three things that silently break this even when the device is confirmed
@@ -328,7 +328,7 @@ the image.
 `crw-------` permissions both work; requires `/dev/videoX` from step 5 above):
 
 ```powershell
-docker run -it --rm --name ros-z1-real -e DISPLAY=host.docker.internal:0.0 --device /dev/video0:/dev/video0 --device /dev/video1:/dev/video1 --user root ros-z1-aruco-real bash
+docker run -it --rm --name ros-z1-teleop -e DISPLAY=host.docker.internal:0.0 --device /dev/video0:/dev/video0 --device /dev/video1:/dev/video1 --user root ros-z1-teleop bash
 ```
 
 Inside the container, list the modes the camera actually supports:
@@ -358,10 +358,10 @@ use that as the known-good mode for your pipeline.
 
 ```bash
 # RealSense-specific (depth + metadata via librealsense)
-docker exec -it ros-z1-real bash -c "rs-enumerate-devices | grep -A3 D435"
+docker exec -it ros-z1-teleop bash -c "rs-enumerate-devices | grep -A3 D435"
 
 # Generic UVC raw-frame check (any camera, see corruption diagnosis above)
-docker exec -it ros-z1-real bash -c "ffplay -f v4l2 -i /dev/video0"
+docker exec -it ros-z1-teleop bash -c "ffplay -f v4l2 -i /dev/video0"
 ```
 
 ---
