@@ -39,6 +39,14 @@ LAUNCH_ALIAS="${1:-z1_teleop_zed}"
 log() { echo "[start_teleop] $*"; }
 die() { echo "[start_teleop] ERROR: $*" >&2; exit 1; }
 
+# Run a command in the docker-desktop WSL distro.
+# --cd / is REQUIRED: without it, wsl.exe tries to chdir into the translation of
+# the current Windows working directory (e.g. E:\...\ros_z1_teleop), which the
+# minimal docker-desktop distro cannot enter — it fails with
+#   "chdir(...) failed 19" then "execvpe(/bin/bash) failed: No such file..."
+# Forcing the cwd to / sidesteps that entirely.
+dwsl() { wsl -d docker-desktop --cd / -- "$@"; }
+
 # --- 0. Docker must be up ----------------------------------------------------
 docker info >/dev/null 2>&1 || die "Docker Desktop doesn't appear to be running."
 
@@ -100,18 +108,18 @@ fi
 
 # --- 3. uvcvideo module + /dev/videoX in the docker-desktop WSL VM ----------
 # Not persistent across Docker Desktop / WSL2 restarts — reload every run.
-if ! wsl -d docker-desktop -- test -e /dev/video0 2>/dev/null; then
+if ! dwsl test -e /dev/video0 2>/dev/null; then
     log "uvcvideo not loaded in docker-desktop VM — loading it"
-    wsl -d docker-desktop -- modprobe uvcvideo
+    dwsl modprobe uvcvideo
 fi
-wsl -d docker-desktop -- test -e /dev/video0 2>/dev/null \
+dwsl test -e /dev/video0 2>/dev/null \
     || die "/dev/video0 still missing after modprobe — check the USB attach state above."
 
 # Bus number is reassigned on every usbipd attach — always read it live,
 # never trust a number from a previous run.
-USB_BUS="$(wsl -d docker-desktop -- sh -c "lsusb | grep '$DEVICE_NAME'" | awk '{print $2}')"
+USB_BUS="$(dwsl sh -c "lsusb | grep '$DEVICE_NAME'" | awk '{print $2}')"
 [ -n "$USB_BUS" ] || die "'$DEVICE_NAME' not visible via lsusb inside docker-desktop."
-wsl -d docker-desktop -- test -d "/dev/bus/usb/$USB_BUS" 2>/dev/null \
+dwsl test -d "/dev/bus/usb/$USB_BUS" 2>/dev/null \
     || die "/dev/bus/usb/$USB_BUS missing inside docker-desktop."
 
 log "$DEVICE_NAME is on bus $USB_BUS inside docker-desktop, /dev/video0 present — OK"
