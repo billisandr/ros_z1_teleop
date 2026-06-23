@@ -67,7 +67,10 @@ RUN apt-get update && apt-get install -y \
     # the newest that still keeps the deprecated aliases (np.float, ...) ROS Noetic
     # modules rely on, and satisfies mediapipe + cv_bridge. All resolved together
     # so protobuf stays 3.20.x.
-    && pip3 install --no-cache-dir mediapipe==0.10.9 streamlit==1.24.0 'numpy==1.23.5' 'protobuf<4' \
+    # --timeout/--retries: mediapipe + streamlit/pyarrow are large wheels; PyPI
+    # downloads can exceed pip's default 15s socket timeout (ReadTimeoutError).
+    && pip3 install --no-cache-dir --timeout 120 --retries 10 \
+       mediapipe==0.10.9 streamlit==1.24.0 'numpy==1.23.5' 'protobuf<4' \
     && rm -rf /var/lib/apt/lists/*
 
 # MediaPipe pulls in matplotlib; with DISPLAY set at runtime (the nodes run with
