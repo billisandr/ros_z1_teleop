@@ -347,6 +347,13 @@ class HandDetectorNode:
                 gripper_val = self._gripper_cmd(pinch_d)
         else:
             self._frames_since_hand += 1
+            # On a *real* loss (just crossed lost_frames), force re-engagement so
+            # a returning hand must show a fresh open palm — same start-frozen
+            # safety as launch, and avoids the arm lurching to a re-acquired hand.
+            if self.clutch_mode != 'always_on' and self._frames_since_hand == self.lost_frames + 1:
+                self.engaged = False
+                self._open_streak = 0
+                self._fist_streak = 0
 
         # Tracking gate (§5.3): true iff configured hand present AND engaged AND
         # not lost for too long. Hand absence beyond lost_frames -> freeze.
