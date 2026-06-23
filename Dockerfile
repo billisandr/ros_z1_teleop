@@ -60,7 +60,14 @@ RUN apt-get update && apt-get install -y \
     # It pins protobuf<4 (compatible with ROS Noetic) and pulls its own opencv
     # wheel; cv_bridge keeps using the system libopencv. The smoke test below
     # verifies cv2 + mediapipe + cv_bridge import together before the build proceeds.
-    && pip3 install --no-cache-dir mediapipe==0.10.9 'protobuf<4' \
+    # streamlit powers the browser control panel (teleop_ui.py). 1.24.0 is the last
+    # line that supports Python 3.8 and keeps protobuf<4 (so it coexists with
+    # mediapipe/ROS). numpy 1.23.5 is pinned because the apt numpy (1.17.4) is too
+    # old for streamlit ("numpy.random has no attribute BitGenerator"); 1.23.5 is
+    # the newest that still keeps the deprecated aliases (np.float, ...) ROS Noetic
+    # modules rely on, and satisfies mediapipe + cv_bridge. All resolved together
+    # so protobuf stays 3.20.x.
+    && pip3 install --no-cache-dir mediapipe==0.10.9 streamlit==1.24.0 'numpy==1.23.5' 'protobuf<4' \
     && rm -rf /var/lib/apt/lists/*
 
 # MediaPipe pulls in matplotlib; with DISPLAY set at runtime (the nodes run with
@@ -159,6 +166,9 @@ RUN echo "source /opt/ros/noetic/setup.bash" >> $HOME/.bashrc && \
     echo 'alias z1_rviz="rviz -d ~/catkin_ws/src/z1_teleop/rviz/z1_teleop.rviz"' >> $HOME/.bashrc && \
     echo 'alias z1_cam="rosrun image_view image_view image:=/hand/debug_image"' >> $HOME/.bashrc && \
     echo 'alias z1_cam_raw="rosrun image_view image_view image:=/camera/color/image_raw"' >> $HOME/.bashrc && \
+    echo '' >> $HOME/.bashrc && \
+    echo '# --- Live control-panel UI (browser, http://localhost:8501; needs docker run -p 8501:8501) ---' >> $HOME/.bashrc && \
+    echo 'alias z1_ui="streamlit run ~/catkin_ws/src/z1_teleop/scripts/teleop_ui.py --server.headless true --server.port 8501 --server.address 0.0.0.0"' >> $HOME/.bashrc && \
     echo '' >> $HOME/.bashrc && \
     echo '# --- Diagnostics ---' >> $HOME/.bashrc && \
     echo 'alias z1_nodes="rosnode list"' >> $HOME/.bashrc && \

@@ -263,8 +263,32 @@ Available inside the container (defined in `~/.bashrc`):
 | `z1_hand` | Run the hand detector alone |
 | `z1_tracker` | Run the arm tracker alone |
 | `z1_cam` | View `/hand/debug_image` |
+| `z1_ui` | Launch the live control-panel UI (browser, port 8501) |
 | `z1_target` / `z1_active` / `z1_gripper` | Echo the hand topics |
 | `z1_joints` | Echo `/z1_gazebo/joint_states` |
+
+---
+
+## Live control panel (UI)
+
+A browser control panel (Streamlit) tunes the station **live** — no YAML edits or
+restarts. It sets ROS params; the detector and arm tracker re-read the "soft"
+knobs every loop. Especially handy for **joint-mirror calibration**
+([docs/JOINT_MIRROR.md](docs/JOINT_MIRROR.md)).
+
+Start the container with port 8501 published, then run `z1_ui`:
+
+```bash
+# the ZED start script already publishes 8501; for a manual run add -p 8501:8501
+docker run -it --rm --name ros-z1-teleop -p 8501:8501 \
+    -e DISPLAY=host.docker.internal:0.0 ros-z1-teleop bash -ic "z1_teleop" &
+docker exec -it ros-z1-teleop bash -ic "z1_ui"
+```
+
+Open **http://localhost:8501**. Tabs: live **Status**, **Cartesian** knobs,
+**Joint-mirror** per-joint map, **Gestures**, and **Presets / Save** (save current
+values back to `teleop.yaml`). Changing the control **mode**, MediaPipe model
+settings, or the camera source still needs a relaunch (flagged in the UI).
 
 ---
 

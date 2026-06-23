@@ -431,9 +431,36 @@ class HandDetectorNode:
             lift(other['shoulder']), lift(side['hip']), lift(other['hip']),
             lift(side['index']), lift(side['pinky']))
 
+    def _refresh_params(self):
+        """Re-read the 'soft' knobs each frame so the control-panel UI can tune
+        them live (cheap local param-cache lookups). Params that need a node
+        rebuild (model complexity, confidences, flip, image_source) are not here."""
+        self.tracked_point = rospy.get_param('mapping/tracked_point', self.tracked_point)
+        self.fixed_x       = float(rospy.get_param('mapping/fixed_x', self.fixed_x))
+        self.y_range       = rospy.get_param('mapping/y_range', self.y_range)
+        self.z_range       = rospy.get_param('mapping/z_range', self.z_range)
+        self.deadzone      = float(rospy.get_param('mapping/deadzone', self.deadzone))
+        self.hand_pref     = str(rospy.get_param('gesture/hand', self.hand_pref)).lower()
+        self.clutch_mode   = rospy.get_param('gesture/clutch', self.clutch_mode)
+        self.gripper_mode  = rospy.get_param('gesture/gripper', self.gripper_mode)
+        self.lost_frames   = int(rospy.get_param('gesture/lost_frames', self.lost_frames))
+        self.hysteresis_frames = int(rospy.get_param('gesture/hysteresis_frames', self.hysteresis_frames))
+        self.open_fingers  = int(rospy.get_param('gesture/open_fingers', self.open_fingers))
+        self.fist_fingers  = int(rospy.get_param('gesture/fist_fingers', self.fist_fingers))
+        self.pinch_closed  = float(rospy.get_param('gesture/pinch_closed_dist', self.pinch_closed))
+        self.pinch_open    = float(rospy.get_param('gesture/pinch_open_dist', self.pinch_open))
+        self.pinch_hold_dist = float(rospy.get_param('gesture/pinch_hold_dist', self.pinch_hold_dist))
+        new_side = str(rospy.get_param('joint_mirror/pose_side', self.pose_side)).lower()
+        if new_side in POSE_IDX:
+            self.pose_side = new_side
+        self.pose_min_vis  = float(rospy.get_param('joint_mirror/min_visibility', self.pose_min_vis))
+        self.smoother.min_cutoff = float(rospy.get_param('smoothing/min_cutoff', self.smoother.min_cutoff))
+        self.smoother.beta = float(rospy.get_param('smoothing/beta', self.smoother.beta))
+
     # ------------------------------------------------------------------ callback
 
     def _image_cb(self, msg):
+        self._refresh_params()
         try:
             frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         except Exception as e:

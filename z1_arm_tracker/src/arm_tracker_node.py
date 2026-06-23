@@ -214,6 +214,25 @@ class ArmTrackerNode:
         self.kp      = rospy.get_param('arm_tracker/joint_kp',        self.kp)
         self.kd      = rospy.get_param('arm_tracker/joint_kd',        self.kd)
         self.enabled = rospy.get_param('arm_tracker/enabled',         self.enabled)
+        # Cartesian knobs (live-tunable from the UI)
+        self.fixed_x = rospy.get_param('arm_tracker/fixed_x',         self.fixed_x)
+        ws = rospy.get_param('arm_tracker/workspace', None)
+        if isinstance(ws, dict):
+            self.y_min, self.y_max = ws.get('y', [self.y_min, self.y_max])
+            self.z_min, self.z_max = ws.get('z', [self.z_min, self.z_max])
+        # Gripper mapping
+        self.gripper_closed = rospy.get_param('arm_tracker/gripper_closed_angle', self.gripper_closed)
+        self.gripper_open   = rospy.get_param('arm_tracker/gripper_open_angle',   self.gripper_open)
+        # Joint-mirror knobs (per-joint map + smoothing) — re-read so the UI can
+        # tune sign/scale/offset/enabled live without restarting the node.
+        if self.joint_mirror:
+            self.jm_alpha = float(rospy.get_param('joint_mirror/smoothing_alpha', self.jm_alpha))
+            for j in range(6):
+                m = rospy.get_param('joint_mirror/map_joint%d' % (j + 1), None)
+                if isinstance(m, list) and len(m) >= 5:
+                    self._jm_map[j] = {'src': int(m[0]), 'sign': float(m[1]),
+                                       'scale': float(m[2]), 'offset': float(m[3]),
+                                       'enabled': bool(m[4])}
 
     def _update_stability(self, ty_raw, tz_raw):
         """Increment stable-tick counter when position target is barely moving."""

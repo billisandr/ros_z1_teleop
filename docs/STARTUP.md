@@ -85,7 +85,13 @@ roslaunch z1_teleop z1_teleop_sim.launch   # then edit arm_tracker/enable_grippe
 
 All knobs are in [../z1_teleop/config/teleop.yaml](../z1_teleop/config/teleop.yaml):
 `control`, `hand`, `mapping`, `gesture`, `smoothing`, `camera`, `zed_camera`,
-`arm_tracker`, `joint_limits`, `simulation`. See the README configuration table.
+`arm_tracker`, `joint_limits`, `joint_mirror`, `simulation`. See the README
+configuration table.
+
+**Tune live without restarting:** run `z1_ui` (browser control panel on port 8501;
+start the container with `-p 8501:8501`). It sets ROS params and the nodes re-read
+the soft knobs each loop — see the README "Live control panel" section.
+
 Inspect what a node is actually using:
 
 ```bash

@@ -95,8 +95,13 @@ Watch one joint at a time. Tell the symptom; apply the fix:
 
 ## 5. Fast tuning loop (no rebuild)
 
-Edit `teleop.yaml`, push it into the running container, and restart only the arm
-tracker (the detector keeps running):
+**Easiest: the live control panel.** Run `z1_ui` (browser, port 8501) and use the
+**Joint-mirror** tab — sliders for each joint's `src`/`sign`/`scale`/`offset`/`enabled`
+apply instantly (the arm tracker re-reads the map every loop). "Save to YAML" when
+you like the result. See the README "Live control panel" section.
+
+**Manual alternative.** Edit `teleop.yaml`, push it into the running container, and
+restart only the arm tracker (the detector keeps running):
 
 ```bash
 docker cp z1_teleop/config/teleop.yaml \

@@ -144,6 +144,7 @@ log "Starting container, launching '$LAUNCH_ALIAS' (ZED 2 hand-teleop)"
 docker run -d --rm \
     --name "$CONTAINER" \
     -e DISPLAY=host.docker.internal:0.0 \
+    -p 8501:8501 \
     --device "/dev/bus/usb/$USB_BUS:/dev/bus/usb/$USB_BUS" \
     --device /dev/video0:/dev/video0 \
     --device /dev/video1:/dev/video1 \
