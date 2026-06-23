@@ -219,7 +219,7 @@ loaded at launch. Highlights:
 
 | Block | Key | Meaning |
 | --- | --- | --- |
-| `control` | `mode` | `cartesian` (default) or `joint_mirror` (stretch, not wired) |
+| `control` | `mode` | `cartesian` (default) or `joint_mirror` (staged; see [docs/JOINT_MIRROR.md](docs/JOINT_MIRROR.md)) |
 | `hand` | `image_source` | `webcam` / `video:/path.mp4` / `external` |
 | `hand` | `flip_horizontal` | selfie view so handedness matches the operator |
 | `mapping` | `tracked_point` | `wrist` or `palm_centroid` |

@@ -20,8 +20,9 @@ Operator conventions (PLAN.md §5): track one configured hand; open palm ENGAGES
 fist FREEZES (clutch with frame hysteresis); optional pinch drives the gripper.
 The arm starts FROZEN until the operator shows an open palm.
 
-OneEuroFilter and the landmark-topology constants are lifted from the standalone
-reference tool (reference/hand_tracker_3d.py); see PLAN.md §13.
+OneEuroFilter, the landmark-topology constants, and the arm-angle decomposition
+were adapted from a standalone MediaPipe prototype (the original project's
+provenance is documented in PLAN.md §13).
 """
 
 import os
@@ -49,7 +50,7 @@ except ImportError as exc:  # pragma: no cover
 
 
 # ---------------------------------------------------------------------------
-# Landmark topology (lifted from reference/hand_tracker_3d.py, §13)
+# Landmark topology (adapted from the original MediaPipe prototype, PLAN.md §13)
 # ---------------------------------------------------------------------------
 WRIST = 0
 # Long fingers: a finger is "extended" when its TIP is farther from the wrist
@@ -68,7 +69,7 @@ POSE_IDX = {
 
 
 # ---------------------------------------------------------------------------
-# 6-DOF arm-angle decomposition (lifted from reference/hand_tracker_3d.py, §13)
+# 6-DOF arm-angle decomposition (adapted from the original prototype, PLAN.md §13)
 # Maps the shoulder->elbow->wrist->hand chain to [q1..q6] degrees:
 #   q1 shoulder azimuth, q2 shoulder elevation, q3 humeral rotation,
 #   q4 elbow flexion (0=straight), q5 wrist flexion, q6 wrist deviation
@@ -406,7 +407,7 @@ class HandDetectorNode:
         world landmarks, or None if the arm is not sufficiently visible.
 
         Uses pose_world_landmarks (metric, hip-origin) for the decomposition —
-        the same input the reference tool uses (PLAN.md §13)."""
+        the same input the original prototype used (PLAN.md §13)."""
         if pose_result is None or pose_result.pose_world_landmarks is None:
             return None
         lm_w = pose_result.pose_world_landmarks.landmark

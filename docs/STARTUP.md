@@ -182,10 +182,11 @@ it with `ffplay` before trusting it — see [DOCKER_CMDS.md](DOCKER_CMDS.md).
 
 ---
 
-## 8. Stretch / future work
+## 8. Joint-mirror mode & stretch work
 
 - **Joint-mirror mode** (`control/mode: joint_mirror`): MediaPipe Pose → 6 arm
-  angles via the reference `arm_joint_angles()` (PLAN.md §4.3, §13). Hook is
-  present in config; not yet wired.
+  angles → Z1 joints directly, bypassing IK (PLAN.md §4.3). **Implemented (staged:
+  joints 1–3; wrist 4–6 opt-in).** The human→Z1 mapping needs hand-tuning — see the
+  calibration guide: [JOINT_MIRROR.md](JOINT_MIRROR.md).
 - **Depth from hand size** (`mapping/depth_from_hand_size`): bound X from apparent
   hand size (PLAN.md §4.4). Hook present; not implemented.
