@@ -1,0 +1,74 @@
+<launch>
+    <!-- =====================================================================
+         Z1 Hand-Teleop Station — ZED 2 variant (Gazebo arm + MediaPipe hand
+         follower fed by a physical ZED 2 over raw UVC, no ZED SDK).
+
+         The ZED bridge publishes /camera/color/image_raw, so image_source is
+         'external' here (no webcam/video helper). On Windows this is the most
+         reliable real-camera path — see start_teleop.sh and PLAN.md §9.
+         ===================================================================== -->
+
+    <rosparam file="$(find z1_teleop)/config/teleop.yaml" command="load"/>
+    <!-- The ZED bridge owns the image topic; the helper must idle. -->
+    <param name="hand/image_source" value="external"/>
+
+    <arg name="rname"            default="z1"/>
+    <arg name="robot_path"       value="(find $(arg rname)_description)"/>
+    <arg name="dollar"           value="$"/>
+    <arg name="debug"            default="false"/>
+    <arg name="UnitreeGripperYN" default="true"/>
+    <arg name="use_sim_time"     default="false"/>
+    <arg name="paused"           default="true"/>
+    <arg name="gui"              default="true"/>
+    <arg name="headless"         default="false"/>
+
+    <!-- Gazebo world — arm only, no marker, no virtual camera -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name"   value="$(find z1_teleop)/worlds/teleop.world"/>
+        <arg name="debug"        value="$(arg debug)"/>
+        <arg name="gui"          value="$(arg gui)"/>
+        <arg name="paused"       value="$(arg paused)"/>
+        <arg name="headless"     value="$(arg headless)"/>
+        <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    </include>
+
+    <param name="robot_description"
+           command="$(find xacro)/xacro --inorder '$(find z1_teleop)/xacro/z1_teleop_robot.xacro'
+           UnitreeGripper:=$(arg UnitreeGripperYN)
+           EndEffectorCamera:=false"/>
+
+    <node pkg="gazebo_ros" type="spawn_model" name="urdf_spawner" respawn="false" output="screen"
+          args="-urdf -z 0.0 -model $(arg rname)_gazebo -param robot_description -unpause"/>
+
+    <rosparam file="$(arg dollar)$(arg robot_path)/config/robot_control.yaml" command="load"/>
+
+    <group unless="$(arg UnitreeGripperYN)">
+        <node pkg="controller_manager" type="spawner" name="controller_spawner" respawn="false"
+            output="screen" ns="/$(arg rname)_gazebo" args="joint_state_controller
+            Joint01_controller Joint02_controller Joint03_controller
+            Joint04_controller Joint05_controller Joint06_controller"/>
+    </group>
+    <group if="$(arg UnitreeGripperYN)">
+        <node pkg="controller_manager" type="spawner" name="controller_spawner" respawn="false"
+            output="screen" ns="/$(arg rname)_gazebo" args="joint_state_controller
+            Joint01_controller Joint02_controller Joint03_controller
+            Joint04_controller Joint05_controller Joint06_controller
+            gripper_controller"/>
+    </group>
+
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher"
+          respawn="false" output="screen">
+        <remap from="/joint_states" to="/$(arg rname)_gazebo/joint_states"/>
+    </node>
+
+    <!-- ZED 2 bridge — raw UVC capture (no ZED SDK), publishes one eye on
+         /camera/color/image_raw. Settings come from the zed_camera: block in
+         teleop.yaml. width/height/fps MUST be a mode confirmed clean with ffplay
+         first — see docs/DOCKER_CMDS.md. -->
+    <node pkg="z1_hand_detector" type="zed_camera_node.py" name="zed_camera" output="screen"/>
+
+    <!-- Hand detector + arm tracker -->
+    <node pkg="z1_hand_detector" type="hand_detector_node.py" name="hand_detector" output="screen"/>
+    <node pkg="z1_arm_tracker" type="arm_tracker_node.py" name="arm_tracker" output="screen"/>
+
+</launch>

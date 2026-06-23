@@ -16,6 +16,7 @@ catkin_package()
 
 catkin_install_python(PROGRAMS
   src/hand_detector_node.py
+  src/image_source_node.py
   src/zed_camera_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

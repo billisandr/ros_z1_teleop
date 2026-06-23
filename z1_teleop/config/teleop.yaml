@@ -1,0 +1,177 @@
+# =============================================================================
+# Z1 Hand-Teleop Station — Configuration
+# =============================================================================
+# Edit this file and rebuild (or docker cp) to change behaviour.
+# All values are loaded at launch time via the ROS parameter server.
+#
+# Pipeline:  camera image -> hand_detector_node -> /hand/target_pose (+active,
+# +gripper) -> arm_tracker_node -> Gazebo Z1 joint controllers.
+#
+# Default control law = Cartesian "hand mirror" (see PLAN.md §4.2): the tracked
+# hand point's normalized image coords (u,v) map linearly to a world Y/Z target
+# with X held fixed. No camera calibration, no TF, no depth.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Control mode
+# -----------------------------------------------------------------------------
+control:
+  # cartesian    — image (u,v) -> world (Y,Z), X fixed (default, recommended)
+  # joint_mirror — MediaPipe Pose -> 6 arm angles (Phase-7 stretch, NOT yet wired)
+  mode: cartesian
+
+
+# -----------------------------------------------------------------------------
+# MediaPipe Hands (perception)
+# -----------------------------------------------------------------------------
+hand:
+  model_complexity: 1            # 0 = fastest, 1 = more accurate
+  min_detection_confidence: 0.6
+  min_tracking_confidence: 0.6
+  # Mirror the feed (selfie view) so MediaPipe's handedness labels match the
+  # operator's real hand — "right" then means the operator's right hand.
+  flip_horizontal: true
+  # Where the image stream comes from (consumed by image_source_node):
+  #   webcam            — open a local V4L2 device (see hand/webcam_device)
+  #   video:/path.mp4   — loop a video file (zero camera hardware; great for demos)
+  #   external          — another node already publishes /camera/color/image_raw
+  #                       (e.g. the ZED bridge or RealSense driver) — helper idles
+  image_source: webcam
+  webcam_device: 0               # V4L2 index when image_source: webcam
+  source_fps: 30                 # publish rate for webcam/video sources
+
+
+# -----------------------------------------------------------------------------
+# Image -> world mapping (Cartesian hand mirror, PLAN.md §4.2)
+# -----------------------------------------------------------------------------
+mapping:
+  tracked_point: wrist           # wrist | palm_centroid
+  fixed_x: 0.25                  # world depth held constant (mirror arm_tracker.fixed_x)
+  y_range: [-0.35, 0.35]         # world Y for image u in [0,1] (mirrored)
+  z_range: [0.10, 0.75]          # world Z for image v in [0,1] (inverted)
+  deadzone: 0.0                  # centered deadzone (0..0.5) to kill jitter when still
+  depth_from_hand_size: false    # Phase-7 stretch — X stays fixed when false
+
+
+# -----------------------------------------------------------------------------
+# Hand-tracking conventions (the operator interaction rules, PLAN.md §5)
+# -----------------------------------------------------------------------------
+gesture:
+  hand: right                    # right | left | either
+  clutch: palm_fist              # palm_fist | always_on | pinch_hold
+  gripper: pinch                 # pinch | none   (v1 default ON)
+  lost_frames: 10                # frames without the hand before freezing
+  hysteresis_frames: 3           # consecutive frames to flip the clutch state
+  open_fingers: 4                # >= this many extended fingers -> ENGAGE
+  fist_fingers: 1                # <= this many extended fingers -> FREEZE
+  pinch_hold_dist: 0.06          # thumb-index distance below which pinch_hold engages
+  pinch_closed_dist: 0.03        # pinch distance mapped to gripper = closed (0)
+  pinch_open_dist: 0.18          # pinch distance mapped to gripper = open  (1)
+
+
+# -----------------------------------------------------------------------------
+# Target smoothing — OneEuro on the normalized (u,v) before mapping
+# -----------------------------------------------------------------------------
+smoothing:
+  freq: 30.0                     # nominal frame rate (Hz)
+  min_cutoff: 1.0                # lower = smoother but laggier
+  beta: 0.0                      # higher = less lag during fast motion
+
+
+# -----------------------------------------------------------------------------
+# Camera (generic; debug overlay toggle)
+# -----------------------------------------------------------------------------
+camera:
+  width: 640
+  height: 480
+  fps: 30
+  # Publish the landmark + HUD overlay on /hand/debug_image
+  show_debug_image: true
+
+
+# -----------------------------------------------------------------------------
+# ZED 2 Camera Bridge (real-camera mode — used by z1_teleop_zed.launch)
+# -----------------------------------------------------------------------------
+# Reads the ZED 2's raw UVC side-by-side stereo feed directly (no ZED SDK) and
+# republishes one eye on /camera/color/image_raw — hand_detector_node is unaware
+# of which camera feeds it. Intrinsics are a rough FOV estimate, not factory
+# calibration (the default hand-mirror mapping does not use them anyway).
+#
+# On Windows + usbipd, isochronous USB-over-IP corrupts high-bandwidth video.
+# Confirm width/height/fps are clean with ffplay BEFORE trusting this node —
+# see docs/DOCKER_CMDS.md#diagnosing-corruptedgarbled-video-over-usbipd-windows.
+zed_camera:
+  device: /dev/video0
+  # 1344x376@15fps is the ZED 2's lowest-bandwidth mode and the only one
+  # confirmed corruption-free over usbipd.
+  width: 1344
+  height: 376
+  fps: 15
+  eye: left                      # which half of the side-by-side frame to publish
+  hfov_deg: 110.0                # ZED 2 wide-lens spec — rough intrinsics only
+
+
+# -----------------------------------------------------------------------------
+# Arm Tracker (control) — IK, smoothing, clamp, gripper passthrough
+# -----------------------------------------------------------------------------
+arm_tracker:
+  # Rate at which joint commands are published (Hz). Max ~50.
+  update_rate: 50.0
+
+  # Fixed forward reach (metres, world X) maintained during 2D tracking.
+  # Should match mapping/fixed_x. The arm only follows the hand's Y and Z.
+  fixed_x: 0.25
+
+  # Low-pass filter coefficient for the Cartesian target (0.0=frozen, 1.0=instant).
+  # Lower = slower, smoother arm motion.
+  smoothing_alpha: 0.10
+
+  # Offset applied on top of fixed_x / hand Y,Z before sending to the arm (metres).
+  target_offset: [0.0, 0.0, 0.0]
+
+  # Safe workspace limits for the end-effector (metres, world frame). Clamped.
+  workspace:
+    x: [0.20, 0.65]
+    y: [-0.40, 0.40]
+    z: [0.10, 0.75]
+
+  # Joint PD gains stamped into every MotorCmd.
+  joint_kp: 150.0
+  joint_kd: 3.0
+
+  # If false, the tracker loads but sends no commands (detection-only testing).
+  enabled: true
+
+  # --- Gripper passthrough (pinch -> gripper) ---
+  enable_gripper: true
+  gripper_closed_angle: 0.0      # jointGripper rad at gripper_cmd=0 (closed)
+  gripper_open_angle: -1.5708    # jointGripper rad at gripper_cmd=1 (open, -pi/2)
+
+  # --- Wrist orientation tracking ---
+  # When true, wrist joints (4-6) rotate to face the target once the arm settles.
+  track_orientation: false
+  orientation_alpha: 0.10
+  stability_threshold: 0.010     # max position change per tick (m) to count as stable
+  stability_ticks: 15            # consecutive stable ticks before the wrist engages
+
+
+# -----------------------------------------------------------------------------
+# Z1 Joint Limits (radians; degree equivalents in comments)
+# -----------------------------------------------------------------------------
+joint_limits:
+  j1: [-2.618,  2.618]   # ±150 deg  — base rotation
+  j2: [ 0.000,  3.142]   #  0–180 deg — shoulder lift
+  j3: [-2.880,  0.000]   # -165–0 deg — elbow
+  j4: [-1.396,  1.396]   # ±80 deg   — wrist roll
+  j5: [-1.484,  1.484]   # ±85 deg   — wrist pitch
+  j6: [-2.793,  2.793]   # ±160 deg  — wrist yaw
+
+
+# -----------------------------------------------------------------------------
+# Simulation
+# -----------------------------------------------------------------------------
+simulation:
+  paused: true                   # start Gazebo paused (z1_unpause to release)
+  gui: true
+  headless: false

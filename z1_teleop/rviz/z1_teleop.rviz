@@ -165,12 +165,12 @@ Visualization Manager:
       Enabled: true
       Head Length: 0.03999999910593033
       Head Radius: 0.029999999329447746
-      Name: ArUco Marker Pose
+      Name: Hand Target Pose
       Queue Size: 5
       Shaft Length: 0.11999999731779099
       Shaft Radius: 0.014999999664723873
       Shape: Arrow
-      Topic: /aruco/marker_pose
+      Topic: /hand/target_pose
       Unreliable: false
       Value: true
     - Class: rviz/Marker
@@ -183,11 +183,11 @@ Visualization Manager:
       Value: false
     - Class: rviz/Image
       Enabled: true
-      Image Topic: /aruco/debug_image
+      Image Topic: /hand/debug_image
       Max Value: 1
       Median window: 5
       Min Value: 0
-      Name: Camera — ArUco Overlay
+      Name: Hand Detector Overlay
       Normalize Range: true
       Queue Size: 2
       Transport Hint: raw

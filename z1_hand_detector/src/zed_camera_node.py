@@ -5,7 +5,7 @@ ZED 2 camera bridge — alternative to the RealSense D435 driver for real camera
 Opens the ZED 2's raw UVC side-by-side stereo feed directly via OpenCV/V4L2 (no ZED
 SDK — depth/positional tracking are unused here, only one rectified-ish RGB eye),
 crops it to a single eye, and republishes on /camera/color/image_raw +
-/camera/color/camera_info — the same topics aruco_detector_node subscribes to,
+/camera/color/camera_info — the same topics hand_detector_node subscribes to,
 regardless of which physical camera is feeding them.
 
 Intrinsics are a rough pinhole estimate from the ZED 2's published horizontal FOV,

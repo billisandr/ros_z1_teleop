@@ -7,7 +7,8 @@
     <xacro:include filename="$(find z1_description)/xacro/transmission.xacro"/>
 
     <xacro:arg name="UnitreeGripper" default="false"/>
-    <!-- Set to true when camera_mode:=end_effector in z1_aruco_tracking.launch -->
+    <!-- Set true to keep camera_color_optical_frame on the wrist (wrist-camera
+         demos). The default hand-mirror control leaves this false. -->
     <xacro:arg name="EndEffectorCamera" default="false"/>
 
     <link name="world"/>

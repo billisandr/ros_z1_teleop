@@ -31,9 +31,9 @@
     <include><uri>model://sun</uri></include>
     <include><uri>model://ground_plane</uri></include>
 
-    <!-- No ArUco marker model — marker is physical, tracked by the real D435. -->
-    <!-- No camera model — camera TF is provided by robot_state_publisher via URDF
-         (camera_color_optical_frame parented to link06, CameraPlugin:=false). -->
+    <!-- Arm only. Perception is a real image stream (webcam / video / ZED) fed
+         to the hand detector outside Gazebo — there is no hand or camera model
+         in this world. The default hand-mirror control uses no camera TF. -->
 
   </world>
 </sdf>

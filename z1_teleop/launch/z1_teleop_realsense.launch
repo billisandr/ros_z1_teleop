@@ -1,0 +1,80 @@
+<launch>
+    <!-- =====================================================================
+         Z1 Hand-Teleop Station — RealSense D435 variant (optional). The D435
+         driver publishes /camera/color/image_raw, so image_source is 'external'.
+         Best on Linux/Mac hosts that pass a /dev/video* device into the container;
+         on Windows prefer the ZED variant or a video file (PLAN.md §9).
+         ===================================================================== -->
+
+    <rosparam file="$(find z1_teleop)/config/teleop.yaml" command="load"/>
+    <param name="hand/image_source" value="external"/>
+
+    <arg name="rname"            default="z1"/>
+    <arg name="robot_path"       value="(find $(arg rname)_description)"/>
+    <arg name="dollar"           value="$"/>
+    <arg name="debug"            default="false"/>
+    <arg name="UnitreeGripperYN" default="true"/>
+    <arg name="use_sim_time"     default="false"/>
+    <arg name="paused"           default="true"/>
+    <arg name="gui"              default="true"/>
+    <arg name="headless"         default="false"/>
+    <arg name="realsense_serial" default=""/>
+
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name"   value="$(find z1_teleop)/worlds/teleop.world"/>
+        <arg name="debug"        value="$(arg debug)"/>
+        <arg name="gui"          value="$(arg gui)"/>
+        <arg name="paused"       value="$(arg paused)"/>
+        <arg name="headless"     value="$(arg headless)"/>
+        <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    </include>
+
+    <param name="robot_description"
+           command="$(find xacro)/xacro --inorder '$(find z1_teleop)/xacro/z1_teleop_robot.xacro'
+           UnitreeGripper:=$(arg UnitreeGripperYN)
+           EndEffectorCamera:=false"/>
+
+    <node pkg="gazebo_ros" type="spawn_model" name="urdf_spawner" respawn="false" output="screen"
+          args="-urdf -z 0.0 -model $(arg rname)_gazebo -param robot_description -unpause"/>
+
+    <rosparam file="$(arg dollar)$(arg robot_path)/config/robot_control.yaml" command="load"/>
+
+    <group unless="$(arg UnitreeGripperYN)">
+        <node pkg="controller_manager" type="spawner" name="controller_spawner" respawn="false"
+            output="screen" ns="/$(arg rname)_gazebo" args="joint_state_controller
+            Joint01_controller Joint02_controller Joint03_controller
+            Joint04_controller Joint05_controller Joint06_controller"/>
+    </group>
+    <group if="$(arg UnitreeGripperYN)">
+        <node pkg="controller_manager" type="spawner" name="controller_spawner" respawn="false"
+            output="screen" ns="/$(arg rname)_gazebo" args="joint_state_controller
+            Joint01_controller Joint02_controller Joint03_controller
+            Joint04_controller Joint05_controller Joint06_controller
+            gripper_controller"/>
+    </group>
+
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher"
+          respawn="false" output="screen">
+        <remap from="/joint_states" to="/$(arg rname)_gazebo/joint_states"/>
+    </node>
+
+    <!-- RealSense D435 driver. publish_tf:=false (we use no camera TF). -->
+    <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+        <arg name="serial_no"     value="$(arg realsense_serial)"/>
+        <arg name="camera"        value="camera"/>
+        <arg name="color_width"   value="640"/>
+        <arg name="color_height"  value="480"/>
+        <arg name="color_fps"     value="30"/>
+        <arg name="enable_depth"  value="false"/>
+        <arg name="enable_infra1" value="false"/>
+        <arg name="enable_infra2" value="false"/>
+        <arg name="enable_gyro"   value="false"/>
+        <arg name="enable_accel"  value="false"/>
+        <arg name="align_depth"   value="false"/>
+        <arg name="publish_tf"    value="false"/>
+    </include>
+
+    <node pkg="z1_hand_detector" type="hand_detector_node.py" name="hand_detector" output="screen"/>
+    <node pkg="z1_arm_tracker" type="arm_tracker_node.py" name="arm_tracker" output="screen"/>
+
+</launch>
