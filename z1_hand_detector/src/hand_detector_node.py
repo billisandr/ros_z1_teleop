@@ -24,6 +24,13 @@ OneEuroFilter and the landmark-topology constants are lifted from the standalone
 reference tool (reference/hand_tracker_3d.py); see PLAN.md §13.
 """
 
+import os
+# Force matplotlib's non-GUI backend BEFORE importing mediapipe. MediaPipe pulls
+# in matplotlib; with DISPLAY set (the node runs with -e DISPLAY for Gazebo/RViz)
+# matplotlib would auto-select a Tk backend and fail with "No module named
+# 'tkinter'" (python3-tk is not installed). The detector never needs a GUI plot.
+os.environ.setdefault("MPLBACKEND", "Agg")
+
 import numpy as np
 import rospy
 import cv2

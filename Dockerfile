@@ -63,9 +63,17 @@ RUN apt-get update && apt-get install -y \
     && pip3 install --no-cache-dir mediapipe==0.10.9 'protobuf<4' \
     && rm -rf /var/lib/apt/lists/*
 
+# MediaPipe pulls in matplotlib; with DISPLAY set at runtime (the nodes run with
+# -e DISPLAY for Gazebo/RViz) matplotlib auto-selects a Tk backend and crashes on
+# `import mediapipe` with "No module named 'tkinter'" (python3-tk is not installed).
+# Force the headless Agg backend image-wide — no node needs a matplotlib GUI.
+ENV MPLBACKEND=Agg
+
 # Fail the build loudly if the MediaPipe / OpenCV / cv_bridge trio does not
 # coexist (the single highest-risk integration point — see PLAN.md §8/§14).
-RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && \
+# Run with a dummy DISPLAY so this also exercises the matplotlib backend selection
+# that bit us at runtime — if MPLBACKEND=Agg above is ever removed, this fails.
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && DISPLAY=:0 \
     python3 -c 'import cv2, mediapipe, numpy; from cv_bridge import CvBridge; \
 print(\"import smoke test OK: cv2\", cv2.__version__, \"| mediapipe\", mediapipe.__version__)'"
 
