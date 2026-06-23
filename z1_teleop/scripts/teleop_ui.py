@@ -70,8 +70,10 @@ def load_yaml():
         return {}
 
 
-ros_init()
+# set_page_config MUST be the first Streamlit command — even invoking a
+# @st.cache_resource function (ros_init) counts as a command and trips it.
 st.set_page_config(page_title="Z1 Hand-Teleop", layout="wide")
+ros_init()
 st.title("🤖 Z1 Hand-Teleop — Control Panel")
 
 ros_ok = True
