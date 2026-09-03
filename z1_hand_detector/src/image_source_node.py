@@ -46,8 +46,8 @@ class ImageSourceNode:
         self.cap = cv2.VideoCapture(target)
         if not self.cap.isOpened():
             rospy.logfatal("[image_source] Could not open source '%s'. For a local "
-                           "webcam inside Docker on Windows, see PLAN.md §9 / the "
-                           "README camera-sourcing section." % self.source)
+                           "webcam inside Docker on Windows, see the README's "
+                           "camera-sourcing section." % self.source)
             raise RuntimeError("cannot open image source: %s" % self.source)
 
         rospy.loginfo("[image_source] Publishing /camera/color/image_raw from %s @ %.0f fps%s"

@@ -7,9 +7,9 @@
 # Pipeline:  camera image -> hand_detector_node -> /hand/target_pose (+active,
 # +gripper) -> arm_tracker_node -> Gazebo Z1 joint controllers.
 #
-# Default control law = Cartesian "hand mirror" (see PLAN.md §4.2): the tracked
-# hand point's normalized image coords (u,v) map linearly to a world Y/Z target
-# with X held fixed. No camera calibration, no TF, no depth.
+# Default control law = Cartesian "hand mirror": the tracked hand point's
+# normalized image coords (u,v) map linearly to a world Y/Z target with X held
+# fixed. No camera calibration, no TF, no depth.
 # =============================================================================
 
 
@@ -18,7 +18,7 @@
 # -----------------------------------------------------------------------------
 control:
   # cartesian    — image (u,v) -> world (Y,Z), X fixed (default, recommended)
-  # joint_mirror — MediaPipe Pose -> 6 arm angles (Phase-7 stretch, NOT yet wired)
+  # joint_mirror — MediaPipe Pose -> 6 arm angles, off by default; see docs/JOINT_MIRROR.md
   mode: cartesian
 
 
@@ -43,7 +43,7 @@ hand:
 
 
 # -----------------------------------------------------------------------------
-# Image -> world mapping (Cartesian hand mirror, PLAN.md §4.2)
+# Image -> world mapping (Cartesian hand mirror)
 # -----------------------------------------------------------------------------
 mapping:
   tracked_point: wrist           # wrist | palm_centroid
@@ -51,11 +51,12 @@ mapping:
   y_range: [-0.35, 0.35]         # world Y for image u in [0,1] (mirrored)
   z_range: [0.10, 0.75]          # world Z for image v in [0,1] (inverted)
   deadzone: 0.0                  # centered deadzone (0..0.5) to kill jitter when still
-  depth_from_hand_size: false    # Phase-7 stretch — X stays fixed when false
+  depth_from_hand_size: false    # not implemented yet — X stays fixed when false
 
 
 # -----------------------------------------------------------------------------
-# Hand-tracking conventions (the operator interaction rules, PLAN.md §5)
+# Hand-tracking conventions (the operator interaction rules; see the README's
+# "Operator conventions" section)
 # -----------------------------------------------------------------------------
 gesture:
   hand: right                    # right | left | either
@@ -80,7 +81,7 @@ smoothing:
 
 
 # -----------------------------------------------------------------------------
-# Joint-mirror mode (control/mode: joint_mirror) — PLAN.md §4.3
+# Joint-mirror mode (control/mode: joint_mirror) — see docs/JOINT_MIRROR.md
 # -----------------------------------------------------------------------------
 # Drives the Z1 joints DIRECTLY from the operator's arm pose (MediaPipe Pose:
 # shoulder -> elbow -> wrist), bypassing IK. Lower precision than the default

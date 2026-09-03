@@ -11,18 +11,18 @@ plus a debug overlay and an optional gripper command:
     /hand/debug_image      sensor_msgs/Image          (landmark + HUD overlay)
     /hand/gripper_cmd      std_msgs/Float64           (optional pinch -> gripper, 0..1)
 
-Default control law = Cartesian "hand mirror" (PLAN.md §4.2): the tracked hand
-point's normalized image coords (u, v) map linearly to a world Y/Z target with X
-held fixed. No camera calibration, no TF, no depth — the detector emits a
+Default control law = Cartesian "hand mirror": the tracked hand point's
+normalized image coords (u, v) map linearly to a world Y/Z target with X held
+fixed. No camera calibration, no TF, no depth — the detector emits a
 world-frame pose straight from a linear map.
 
-Operator conventions (PLAN.md §5): track one configured hand; open palm ENGAGES,
-fist FREEZES (clutch with frame hysteresis); optional pinch drives the gripper.
-The arm starts FROZEN until the operator shows an open palm.
+Operator conventions (see the README): track one configured hand; open palm
+ENGAGES, fist FREEZES (clutch with frame hysteresis); optional pinch drives
+the gripper. The arm starts FROZEN until the operator shows an open palm.
 
-OneEuroFilter, the landmark-topology constants, and the arm-angle decomposition
-were adapted from a standalone MediaPipe prototype (the original project's
-provenance is documented in PLAN.md §13).
+OneEuroFilter, the landmark-topology constants, and the arm-angle
+decomposition were adapted from an earlier standalone MediaPipe prototype of
+ours (see THIRD_PARTY_NOTICES.md).
 """
 
 import os
@@ -45,12 +45,12 @@ try:
 except ImportError as exc:  # pragma: no cover
     raise SystemExit(
         "[hand_detector] mediapipe is required but could not be imported (%s). "
-        "Build/run inside the project Docker image (see PLAN.md §8)." % exc
+        "Build/run inside the project Docker image (see the Dockerfile)." % exc
     )
 
 
 # ---------------------------------------------------------------------------
-# Landmark topology (adapted from the original MediaPipe prototype, PLAN.md §13)
+# Landmark topology (adapted from an earlier MediaPipe prototype of ours)
 # ---------------------------------------------------------------------------
 WRIST = 0
 # Long fingers: a finger is "extended" when its TIP is farther from the wrist
@@ -61,7 +61,7 @@ PALM_LMS = [0, 5, 9, 13, 17]          # wrist + the four finger MCPs (palm centr
 THUMB_TIP, THUMB_IP, INDEX_MCP = 4, 3, 5
 INDEX_TIP = 8
 
-# MediaPipe Pose landmark indices per body side (for joint_mirror, §4.3)
+# MediaPipe Pose landmark indices per body side (for joint_mirror mode)
 POSE_IDX = {
     'left':  {'shoulder': 11, 'elbow': 13, 'wrist': 15, 'index': 19, 'pinky': 17, 'hip': 23},
     'right': {'shoulder': 12, 'elbow': 14, 'wrist': 16, 'index': 20, 'pinky': 18, 'hip': 24},
@@ -69,7 +69,7 @@ POSE_IDX = {
 
 
 # ---------------------------------------------------------------------------
-# 6-DOF arm-angle decomposition (adapted from the original prototype, PLAN.md §13)
+# 6-DOF arm-angle decomposition (adapted from an earlier prototype of ours)
 # Maps the shoulder->elbow->wrist->hand chain to [q1..q6] degrees:
 #   q1 shoulder azimuth, q2 shoulder elevation, q3 humeral rotation,
 #   q4 elbow flexion (0=straight), q5 wrist flexion, q6 wrist deviation
@@ -128,7 +128,8 @@ def arm_joint_angles(s, e, w, s_other, hip, hip_other, idx_pt, pky_pt):
 
 
 # ---------------------------------------------------------------------------
-# One Euro filter — per-coordinate low-lag smoothing (lifted verbatim, §13)
+# One Euro filter — per-coordinate low-lag smoothing (lifted verbatim from that
+# same prototype; see THIRD_PARTY_NOTICES.md for the algorithm's origin)
 # ---------------------------------------------------------------------------
 class OneEuroFilter:
     def __init__(self, freq, min_cutoff=1.0, beta=0.0, d_cutoff=1.0):
@@ -174,7 +175,7 @@ class HandDetectorNode:
         rospy.init_node('hand_detector', anonymous=False)
         self.bridge = CvBridge()
 
-        # --- control mode: cartesian hand-mirror (default) or joint_mirror (§4.3) ---
+        # --- control mode: cartesian hand-mirror (default) or joint_mirror ---
         self.control_mode = rospy.get_param('control/mode', 'cartesian')
         self.joint_mirror = (self.control_mode == 'joint_mirror')
 
@@ -192,8 +193,8 @@ class HandDetectorNode:
         self.deadzone = float(rospy.get_param('mapping/deadzone', 0.0))
         self.depth_from_hand_size = bool(rospy.get_param('mapping/depth_from_hand_size', False))
         if self.depth_from_hand_size:
-            rospy.logwarn("[hand_detector] mapping/depth_from_hand_size is a Phase-7 "
-                          "stretch and is not implemented yet — X stays fixed.")
+            rospy.logwarn("[hand_detector] mapping/depth_from_hand_size is not "
+                          "implemented yet — X stays fixed.")
 
         # --- gesture / conventions ---
         self.hand_pref = rospy.get_param('gesture/hand', 'right').lower()        # right|left|either
@@ -294,8 +295,7 @@ class HandDetectorNode:
         """Return (landmarks, label) for the configured hand, or (None, None).
 
         With flip_horizontal=True the frame is mirrored (selfie view), so the
-        MediaPipe handedness label already matches the operator's real hand
-        (PLAN.md §5.1)."""
+        MediaPipe handedness label already matches the operator's real hand."""
         if not result.multi_hand_landmarks:
             return None, None
         handed = result.multi_handedness or []
@@ -345,7 +345,7 @@ class HandDetectorNode:
         return float(np.linalg.norm(xy[THUMB_TIP] - xy[INDEX_TIP]))
 
     def _update_clutch(self, count, pinch_d):
-        """Latch engage/disengage with frame hysteresis (PLAN.md §5.2)."""
+        """Latch engage/disengage with frame hysteresis."""
         if self.clutch_mode == 'always_on':
             self.engaged = True
             return
@@ -407,7 +407,7 @@ class HandDetectorNode:
         world landmarks, or None if the arm is not sufficiently visible.
 
         Uses pose_world_landmarks (metric, hip-origin) for the decomposition —
-        the same input the original prototype used (PLAN.md §13)."""
+        the same input our earlier prototype used."""
         if pose_result is None or pose_result.pose_world_landmarks is None:
             return None
         lm_w = pose_result.pose_world_landmarks.landmark
@@ -522,8 +522,8 @@ class HandDetectorNode:
                 self._open_streak = 0
                 self._fist_streak = 0
 
-        # Tracking gate (§5.3): true iff configured hand present AND engaged AND
-        # not lost for too long. Hand absence beyond lost_frames -> freeze.
+        # Tracking gate: true iff configured hand present AND engaged AND not
+        # lost for too long. Hand absence beyond lost_frames -> freeze.
         if self._frames_since_hand > self.lost_frames:
             active = False
 

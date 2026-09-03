@@ -56,12 +56,12 @@ docker run -it --rm \
 
 **Windows:**
 
-Docker Desktop runs containers in a WSL2 VM with no native X server, so replace
-the Linux X11 flags with `-e DISPLAY=host.docker.internal:0.0` and drop the
-`-v /tmp/.X11-unix...` mount entirely (the path does not exist on Windows).
-Requires an X server such as VcXsrv running on the host — see
-[README.md](../README.md#quick-start) for setup. This rationale applies to
-every `DISPLAY=host.docker.internal:0.0` command in this file.
+Docker Desktop runs containers in a WSL2 VM with no native X server, so swap
+the Linux X11 flags for `-e DISPLAY=host.docker.internal:0.0` and drop the
+`-v /tmp/.X11-unix...` mount entirely (that path doesn't exist on Windows).
+This needs an X server such as VcXsrv running on the host; see
+[README.md](../README.md#quick-start) for setup. The same rationale applies
+to every `DISPLAY=host.docker.internal:0.0` command in this file.
 
 ```powershell
 docker run -it --rm -e DISPLAY=host.docker.internal:0.0 <image-name>
@@ -80,8 +80,9 @@ docker run -it --rm <image-name> bash
 
 ## Volumes / Live File Sync
 
-Bind mounts map a host directory into the container in real time.
-Any file edited on the host is instantly visible inside — no rebuild or docker cp needed.
+Bind mounts map a host directory into the container in real time. A file
+edited on the host shows up instantly inside the container, with no rebuild
+or `docker cp` needed.
 
 ```bash
 # Mount a single directory
@@ -91,9 +92,9 @@ docker run -it --rm \
 
 # Mount multiple directories (one -v per path)
 docker run -it --rm \
-  -v /home/sense/ros_docker/z1_hand_detector:/home/rosuser/catkin_ws/src/z1_hand_detector \
-  -v /home/sense/ros_docker/z1_arm_tracker:/home/rosuser/catkin_ws/src/z1_arm_tracker \
-  -v /home/sense/ros_docker/z1_teleop:/home/rosuser/catkin_ws/src/z1_teleop \
+  -v <host-path>/z1_hand_detector:/home/rosuser/catkin_ws/src/z1_hand_detector \
+  -v <host-path>/z1_arm_tracker:/home/rosuser/catkin_ws/src/z1_arm_tracker \
+  -v <host-path>/z1_teleop:/home/rosuser/catkin_ws/src/z1_teleop \
   ros-z1-teleop bash
 
 # Mount as read-only (container cannot write back to host)
@@ -102,15 +103,16 @@ docker run -it --rm \
   <image-name>
 ```
 
-> Bind mounts override files baked into the image at those paths.
-> Keep host files as the source of truth.
+> Bind mounts override files baked into the image at those paths. Keep host
+> files as the source of truth.
 
 ---
 
 ## GPU / Rendering
 
-The `ros-z1` image uses Mesa software rendering by default (`LIBGL_ALWAYS_SOFTWARE=1`
-is set in the Dockerfile). No GPU flags are needed to run Gazebo or RViz.
+The `ros-z1` image uses Mesa software rendering by default
+(`LIBGL_ALWAYS_SOFTWARE=1` is set in the Dockerfile). No GPU flags are needed
+to run Gazebo or RViz.
 
 To attempt hardware GPU rendering, override the env vars at runtime:
 
@@ -137,25 +139,26 @@ docker run -it --rm \
 > Install nvidia-container-toolkit once on the host:
 > `sudo apt-get install nvidia-container-toolkit && sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`
 
-**Windows:** `/dev/dri` does not exist and the `nvidia-container-toolkit` steps
-above are Linux-only. Docker Desktop's WSL2 backend has a different (untested
-for this image) NVIDIA GPU passthrough path via `--gpus all` and the host's
-WSL2 NVIDIA driver — no `/dev/dri` flag. Software rendering (the default) is
-the only supported path on Windows.
+**Windows:** `/dev/dri` doesn't exist, and the `nvidia-container-toolkit`
+steps above are Linux-only. Docker Desktop's WSL2 backend has a different
+NVIDIA GPU passthrough path via `--gpus all` and the host's WSL2 NVIDIA
+driver, with no `/dev/dri` flag involved, but we haven't tested it for this
+image. Software rendering (the default) is the only path we support on
+Windows.
 
 ---
 
 ## USB Device Passthrough (RealSense D435)
 
-The D435 is a USB device. Docker does not expose USB devices by default, and
-the mechanism to bridge it in differs completely between Linux and Windows.
+The D435 is a USB device. Docker doesn't expose USB devices by default, and
+the mechanism to bridge one in differs completely between Linux and Windows.
 
 ### Linux
 
 **Host prerequisite — udev rules (run once):**
 
-The Intel RealSense apt repo does not support Ubuntu 24 (Noble). Install the udev rules
-directly from upstream instead:
+The Intel RealSense apt repo doesn't support Ubuntu 24 (Noble), so install
+the udev rules directly from upstream instead:
 
 ```bash
 sudo curl -fsSL https://raw.githubusercontent.com/IntelRealSense/librealsense/master/config/99-realsense-libusb.rules \
@@ -163,7 +166,7 @@ sudo curl -fsSL https://raw.githubusercontent.com/IntelRealSense/librealsense/ma
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-Unplug and replug the D435. Verify it is visible on the host:
+Unplug and replug the D435. Verify it's visible on the host:
 
 ```bash
 lsusb | grep RealSense
@@ -179,7 +182,7 @@ lsusb | grep RealSense
 # example: Bus 004 Device 003: ID 8086:0b07 Intel Corp. RealSense D435
 ```
 
-Then pass only that bus (cleaner than exposing all buses):
+Then pass only that bus, which is cleaner than exposing all buses:
 
 ```bash
 docker run -it --rm \
@@ -190,10 +193,12 @@ docker run -it --rm \
   ros-z1-teleop bash
 ```
 
-If the bus number changes after a replug, recheck with `lsusb` and update the path.
+If the bus number changes after a replug, recheck with `lsusb` and update
+the path.
 
-If the driver logs `RS2_USB_STATUS_ACCESS`, the udev rules have not taken effect.
-Unplug and replug the D435 after reloading rules. As a fallback, use `--privileged`:
+If the driver logs `RS2_USB_STATUS_ACCESS`, the udev rules haven't taken
+effect. Unplug and replug the D435 after reloading the rules. As a fallback,
+use `--privileged`:
 
 ```bash
 # Fallback — full device access (workshop / dev use only)
@@ -207,11 +212,11 @@ docker run -it --rm \
 
 ### Windows
 
-Windows recognizing the D435 (Device Manager / `Get-PnpDevice`) is **not** the
-same as the container seeing it. Docker Desktop's containers run inside a
-WSL2 VM, which has no native access to host USB devices — there is no
-`/dev/bus/usb` equivalent to mount unless the device is explicitly attached to
-WSL2 first. That bridge is **`usbipd-win`**.
+Windows recognizing the D435, through Device Manager or `Get-PnpDevice`, is
+not the same thing as the container seeing it. Docker Desktop's containers
+run inside a WSL2 VM, which has no native access to host USB devices, so
+there's no `/dev/bus/usb` equivalent to mount unless the device is
+explicitly attached to WSL2 first. That bridge is `usbipd-win`.
 
 **1. Install `usbipd-win` once (elevated PowerShell):**
 
@@ -226,8 +231,8 @@ usbipd list
 # example: 4-3    8086:0b07  Intel(R) RealSense(TM) Depth Camera 435   Not shared
 ```
 
-**3. Bind and attach it to WSL2** (replace `4-3` with your BUSID). `attach` is
-not persistent — re-run it after every unplug/replug or reboot:
+**3. Bind and attach it to WSL2** (replace `4-3` with your BUSID). `attach`
+isn't persistent, so re-run it after every unplug/replug or reboot:
 
 ```powershell
 usbipd bind --busid 4-3
@@ -237,9 +242,9 @@ usbipd attach --wsl --busid 4-3
 **4. Confirm it landed in the right place, then note the bus number.**
 
 `usbipd attach --wsl` attaches to whichever WSL distro is currently the
-default (`wsl -l -v` shows which one that is) — that is **not necessarily**
-the `docker-desktop` distro that actually backs Docker Desktop's containers.
-Check `docker-desktop` directly rather than your default distro (e.g. Ubuntu):
+default (`wsl -l -v` shows which one that is), and that's not necessarily the
+`docker-desktop` distro that actually backs Docker Desktop's containers.
+Check `docker-desktop` directly rather than your default distro (Ubuntu, say):
 
 ```powershell
 wsl -d docker-desktop -- lsusb
@@ -247,18 +252,18 @@ wsl -d docker-desktop -- lsusb
 ```
 
 If it's missing from `docker-desktop` but shows up under plain `wsl lsusb`,
-`usbipd attach` landed it in your default distro instead — switch the default
-with `wsl -l -v` / `wsl -s docker-desktop`, or pass `-d docker-desktop` if your
-`usbipd` version supports targeting a distro directly, then re-attach.
+`usbipd attach` landed it in your default distro instead. Switch the default
+with `wsl -l -v` / `wsl -s docker-desktop`, or pass `-d docker-desktop` if
+your `usbipd` version supports targeting a distro directly, then re-attach.
 
-**5. (Cameras with a standard UVC interface — the D435 is one) load `uvcvideo`
-and confirm `/dev/videoX` nodes exist:**
+**5. Load `uvcvideo` and confirm `/dev/videoX` nodes exist** (cameras with a
+standard UVC interface, which the D435 is one of, need this step):
 
-The WSL2 kernel ships the `uvcvideo` module but does not load it
+The WSL2 kernel ships the `uvcvideo` module but doesn't load it
 automatically. Without it, `lsusb` shows the raw device but no `/dev/videoX`
-node is created for it, which breaks any tool that talks V4L2 (`ffplay`,
-`v4l2-ctl`, OpenCV's `cv2.VideoCapture`, etc.) even though the raw USB bus is
-reachable:
+node gets created, which breaks anything that talks V4L2 (`ffplay`,
+`v4l2-ctl`, OpenCV's `cv2.VideoCapture`, and so on) even though the raw USB
+bus is reachable:
 
 ```powershell
 wsl -d docker-desktop -- modprobe uvcvideo
@@ -266,14 +271,14 @@ wsl -d docker-desktop -- ls /dev/video*
 # example: /dev/video0  /dev/video1
 ```
 
-This module load is **not persistent** — repeat it after every Docker
+This module load isn't persistent. Repeat it after every Docker
 Desktop / WSL2 restart (it survives a camera unplug/replug, but not a VM
 restart).
 
 **6. Pass the bus (and, if present, the video nodes) into the container**
-(single line — PowerShell does not treat a trailing `\` as a line
-continuation). `/dev/videoX` is `crw-------` (root-only) — without
-`--user root`, anything reading it (the ZED bridge node, `ffplay`, etc.)
+(single line, since PowerShell doesn't treat a trailing `\` as a line
+continuation). `/dev/videoX` is `crw-------` (root-only), so without
+`--user root`, anything reading it (the ZED bridge node, `ffplay`, and so on)
 fails with a permission/open error even though the device is correctly
 passed through:
 
@@ -288,44 +293,45 @@ If `usbipd attach` succeeds but the container still reports
 docker run -it --rm --name ros-z1-teleop -e DISPLAY=host.docker.internal:0.0 --privileged ros-z1-teleop bash
 ```
 
-**Three things that silently break this even when the device is confirmed
-reachable in `docker-desktop`:**
+Three things quietly break this setup even after the device shows up as
+reachable in `docker-desktop`:
 
 1. **Missing `--device` entirely.** Docker never auto-passes-through
-   devices — if the `docker run` you actually ran doesn't have
+   devices. If the `docker run` you actually ran doesn't have
    `--device /dev/bus/usb/002:/dev/bus/usb/002` on it, the container's `/dev`
-   stays empty no matter what the VM sees. Double-check the exact command you
-   ran, not just the one from this doc.
-2. **Bus number mismatch.** The bus number in `--device` must match the
-   *current* `wsl -d docker-desktop -- lsusb` output. It is reassigned on
-   every `usbipd attach`, so a number copied from an earlier session (e.g.
+   stays empty no matter what the VM sees. Double-check the exact command
+   you ran, not just the one from this doc.
+2. **Bus number mismatch.** The bus number in `--device` has to match the
+   current `wsl -d docker-desktop -- lsusb` output. It gets reassigned on
+   every `usbipd attach`, so a number copied from an earlier session (say,
    `004`) silently mounts nothing once it's actually `002`.
 3. **Stale container.** Devices are snapshotted into a container at
-   `docker run` time, not re-read live. If you `usbipd attach` *after* the
-   container is already running, that container will never see the device —
+   `docker run` time, not re-read live. If you `usbipd attach` after the
+   container is already running, that container will never see the device.
    `docker stop`/`docker rm` it (or just re-run `docker run --rm`, which
-   removes it on exit) and start a new one now that the device is attached.
+   removes it on exit) and start a fresh one now that the device is attached.
 
 ### Diagnosing corrupted/garbled video over usbipd (Windows)
 
-`usbipd-win` tunnels USB over TCP into the WSL2 VM. Bulk-transfer devices
-(flash drives, serial adapters) tunnel fine; **isochronous transfers — which
-webcams use for continuous high-bandwidth video — frequently do not.** At
-full resolution this shows up as a wall of identical warnings, one per frame,
-with the reported buffer size varying wildly instead of staying constant for
-a given format:
+`usbipd-win` tunnels USB over TCP into the WSL2 VM. Bulk-transfer devices,
+like flash drives or serial adapters, tunnel fine. Isochronous transfers,
+which webcams use for continuous high-bandwidth video, frequently don't. At
+full resolution this shows up as a wall of identical warnings, one per
+frame, with the reported buffer size varying wildly instead of staying
+constant for a given format:
 
-```
+```txt
 [video4linux2,v4l2 @ ...] Dequeued v4l2 buffer contains corrupted data (229292 bytes)
 [video4linux2,v4l2 @ ...] Dequeued v4l2 buffer contains corrupted data (3079064 bytes)
 ```
 
-This is a usbip limitation, not a Docker, driver, or camera fault — it will
-not be fixed by `--privileged`, a different `--device` mapping, or rebuilding
+This is a usbip limitation, not a Docker, driver, or camera fault. It won't
+be fixed by `--privileged`, a different `--device` mapping, or rebuilding
 the image.
 
 **Test raw frames directly** (run as root so `apt-get` and the device's
-`crw-------` permissions both work; requires `/dev/videoX` from step 5 above):
+`crw-------` permissions both work; this needs `/dev/videoX` from step 5
+above):
 
 ```powershell
 docker run -it --rm --name ros-z1-teleop -e DISPLAY=host.docker.internal:0.0 --device /dev/video0:/dev/video0 --device /dev/video1:/dev/video1 --user root ros-z1-teleop bash
@@ -338,7 +344,7 @@ apt-get update -qq && apt-get install -y -qq v4l-utils
 v4l2-ctl -d /dev/video0 --list-formats-ext
 ```
 
-Then preview a given mode live (window opens via VcXsrv through the
+Then preview a given mode live (a window opens via VcXsrv through the
 `DISPLAY` set above):
 
 ```bash
@@ -346,12 +352,12 @@ apt-get install -y -qq ffmpeg
 ffplay -f v4l2 -video_size <WIDTHxHEIGHT> -framerate <FPS> -i /dev/video0
 ```
 
-**The corruption is bandwidth-dependent.** A ZED 2 tested at its default
+The corruption is bandwidth-dependent. A ZED 2 tested at its default
 `2560x720@60fps` mode corrupted essentially every frame; dropping to its
 lowest-bandwidth mode, `1344x376@15fps`, produced zero corrupted-frame
-warnings over the same run. If your camera's native/default resolution
-corrupts, work down through `--list-formats-ext`'s reported modes (lower
-resolution first, then lower framerate) until the warnings disappear, and
+warnings over the same run. If your camera's native or default resolution
+corrupts, work down through `--list-formats-ext`'s reported modes, lower
+resolution first, then lower framerate, until the warnings disappear, and
 use that as the known-good mode for your pipeline.
 
 ### Verify the camera is visible inside the container (both platforms)

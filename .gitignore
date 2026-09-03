@@ -10,3 +10,6 @@ catkin_ws/
 __pycache__/
 devel/
 install/
+
+# Internal planning notes, not part of the public-facing docs
+PLAN.md

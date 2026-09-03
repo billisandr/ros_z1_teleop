@@ -3,7 +3,8 @@
          Z1 Hand-Teleop Station — RealSense D435 variant (optional). The D435
          driver publishes /camera/color/image_raw, so image_source is 'external'.
          Best on Linux/Mac hosts that pass a /dev/video* device into the container;
-         on Windows prefer the ZED variant or a video file (PLAN.md §9).
+         on Windows prefer the ZED variant or a video file (see the README's
+         camera-sourcing section).
          ===================================================================== -->
 
     <rosparam file="$(find z1_teleop)/config/teleop.yaml" command="load"/>

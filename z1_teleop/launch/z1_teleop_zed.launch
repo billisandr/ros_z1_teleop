@@ -5,7 +5,8 @@
 
          The ZED bridge publishes /camera/color/image_raw, so image_source is
          'external' here (no webcam/video helper). On Windows this is the most
-         reliable real-camera path — see start_teleop.sh and PLAN.md §9.
+         reliable real-camera path — see start_teleop.sh and the README's
+         camera-sourcing section.
          ===================================================================== -->
 
     <rosparam file="$(find z1_teleop)/config/teleop.yaml" command="load"/>

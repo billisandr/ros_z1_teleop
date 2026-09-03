@@ -80,7 +80,9 @@ RUN apt-get update && apt-get install -y \
 ENV MPLBACKEND=Agg
 
 # Fail the build loudly if the MediaPipe / OpenCV / cv_bridge trio does not
-# coexist (the single highest-risk integration point — see PLAN.md §8/§14).
+# coexist. Getting these three to import together is the single highest-risk
+# part of this build: MediaPipe pulls its own protobuf/opencv, which can
+# silently shadow the ROS-provided cv_bridge/python3-opencv pair.
 # Run with a dummy DISPLAY so this also exercises the matplotlib backend selection
 # that bit us at runtime — if MPLBACKEND=Agg above is ever removed, this fails.
 RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && DISPLAY=:0 \
@@ -116,7 +118,7 @@ RUN mkdir -p /home/$USERNAME/catkin_ws/src
 COPY --chown=$USERNAME:$USERNAME unitree_ros /home/$USERNAME/catkin_ws/src/unitree_ros
 COPY --chown=$USERNAME:$USERNAME z1_controller/sim /home/$USERNAME/catkin_ws/src/z1_controller
 # The upstream sim/CMakeLists.txt (commit 639bb77) needs three fixes to build
-# here as a standalone catkin package (PLAN.md §12b):
+# here as a standalone catkin package:
 #   0. Prepend cmake_minimum_required + project() — upstream's sim/CMakeLists.txt
 #      lacks them (the source repo pinned a local-only commit that added them).
 #   1. Normalise CRLF — the submodule file ships with Windows line endings, which
@@ -145,7 +147,7 @@ RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && \
     cd $HOME/catkin_ws && \
     catkin_make"
 
-# Shell setup: auto-source ROS + workshop aliases (PLAN.md §7.6)
+# Shell setup: auto-source ROS + workshop aliases
 RUN echo "source /opt/ros/noetic/setup.bash" >> $HOME/.bashrc && \
     echo "source $HOME/catkin_ws/devel/setup.bash" >> $HOME/.bashrc && \
     echo 'export PS1="\[\033[01;36m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> $HOME/.bashrc && \

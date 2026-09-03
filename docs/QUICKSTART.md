@@ -4,8 +4,8 @@ A full walkthrough for bringing up the station. For a commands-only version see
 [MINIMAL_QUICKSTART.md](MINIMAL_QUICKSTART.md); for the ZED/USB internals see
 [DOCKER_CMDS.md](DOCKER_CMDS.md).
 
-**Operator cheat sheet:** open palm to drive, fist to freeze, show your right hand.
-The arm always **starts frozen** — it won't move until you show an open palm.
+Cheat sheet: open palm to drive, fist to freeze, show your right hand. The arm
+always starts frozen. It won't move until you show it an open palm.
 
 ---
 
@@ -13,9 +13,9 @@ The arm always **starts frozen** — it won't move until you show an open palm.
 
 - **Docker** (Docker Desktop on Windows/macOS, native on Linux).
 - **An X server** for the Gazebo/RViz GUIs:
-  - Windows: **VcXsrv**, started with `-wgl` (Mesa software GL needs it).
-  - macOS: **XQuartz** (allow network clients).
-  - Linux: native X — usually just `-e DISPLAY=$DISPLAY` and an `xhost +local:`.
+  - Windows: VcXsrv, started with `-wgl` (Mesa software GL needs it).
+  - macOS: XQuartz (allow network clients).
+  - Linux: native X, usually just `-e DISPLAY=$DISPLAY` and an `xhost +local:`.
 - **Only for the ZED/D435 real-camera paths on Windows:** `usbipd-win`.
 
 ---
@@ -30,9 +30,10 @@ docker build -t ros-z1-teleop .
 
 Cloned without `--recursive`? Run `git submodule update --init --recursive` first.
 
-The first build is ~10–15 min: it compiles the Z1 SDK and the `z1_controller`
-Gazebo bridge, runs `catkin_make`, and runs a MediaPipe/OpenCV/`cv_bridge` import
-smoke test that fails the build if those don't coexist.
+The first build takes roughly 10 to 15 minutes. It compiles the Z1 SDK and the
+`z1_controller` Gazebo bridge, runs `catkin_make`, and finishes with a
+MediaPipe/OpenCV/`cv_bridge` import smoke test that fails the build if those
+don't coexist.
 
 ---
 
@@ -42,14 +43,15 @@ smoke test that fails the build if those don't coexist.
 & "C:\Program Files\VcXsrv\vcxsrv.exe" :0 -multiwindow -clipboard -ac -wgl
 ```
 
-`start_teleop.sh` checks/repairs this for you on the ZED path.
+`start_teleop.sh` checks and repairs this for you on the ZED path.
 
 ---
 
 ## 4. Run mode A — hardware-free demo (video file)
 
-The primary perception path is always a real image stream. With no camera, loop a
-short video of a moving hand (any `.mp4` reachable inside the container).
+The perception pipeline always wants a real image stream, so with no camera
+attached, loop a short video of a moving hand instead (any `.mp4` reachable
+inside the container).
 
 **Terminal 1** — container + launch:
 
@@ -86,25 +88,27 @@ docker run -it --rm --name ros-z1-teleop --device /dev/video0:/dev/video0 \
 ```
 
 `z1_teleop` defaults to `image_source: webcam` / `hand/webcam_device: 0`. On
-Windows the built-in webcam generally can't be passed into Docker — use a video
-file (mode A) or the ZED path (mode C).
+Windows the built-in webcam generally can't be passed into Docker, so use a
+video file (mode A) or the ZED path (mode C) instead.
 
 ---
 
 ## 6. Run mode C — real camera over usbipd (ZED 2 / RealSense, recommended on Windows)
 
-On Windows, a USB camera reaches the container only after it is forwarded into the
-Docker Desktop WSL2 VM with **`usbipd-win`** — the same mechanism the ArUco repo
-used. `start_teleop.sh` automates the whole sequence:
+On Windows, a USB camera only reaches the container after it's forwarded into
+the Docker Desktop WSL2 VM with `usbipd-win`, the same mechanism the earlier
+ArUco version of this project used. `start_teleop.sh` automates the whole
+sequence:
 
 1. verifies VcXsrv is running with `-wgl`;
 2. `usbipd bind` + `usbipd attach --wsl` the camera into WSL2;
 3. loads `uvcvideo` in the `docker-desktop` VM and resolves the live USB bus;
-4. `docker run` with `--device /dev/bus/usb/<bus>` + `/dev/video0` + `/dev/video1`;
+4. runs `docker run` with `--device /dev/bus/usb/<bus>` plus `/dev/video0` and
+   `/dev/video1`;
 5. waits for ROS, then opens RViz.
 
-Run it from **Git Bash on the Windows host** (not WSL, not inside the container).
-First-time `usbipd bind` needs an **Administrator** Git Bash:
+Run it from Git Bash on the Windows host (not WSL, not inside the container).
+The first `usbipd bind` needs an Administrator Git Bash:
 
 ```bash
 bash start_teleop.sh                       # default alias: z1_teleop_zed (ZED 2 bridge)
@@ -112,10 +116,11 @@ bash start_teleop.sh z1_teleop_zed_headless   # no Gazebo GUI
 ```
 
 The launch sets `hand/image_source: external` so the camera node owns
-`/camera/color/image_raw`; `z1_teleop_zed` runs `zed_camera_node` (raw UVC, no ZED
-SDK). For a **RealSense D435** instead, set `DEVICE_NAME="RealSense"` in
-`start_teleop.sh` and launch `z1_teleop_realsense` (runs the `realsense2_camera`
-driver) — the usbipd/`--device` forwarding is identical.
+`/camera/color/image_raw`; `z1_teleop_zed` runs `zed_camera_node` (raw UVC, no
+ZED SDK). For a RealSense D435 instead, set `DEVICE_NAME="RealSense"` in
+`start_teleop.sh` and launch `z1_teleop_realsense` (runs the
+`realsense2_camera` driver). The usbipd/`--device` forwarding is identical
+either way.
 
 Then unpause physics:
 
@@ -123,10 +128,11 @@ Then unpause physics:
 docker exec -it ros-z1-teleop bash -ic "z1_unpause"
 ```
 
-ZED device/resolution/fps/eye come from the `zed_camera:` block in `teleop.yaml`
-— use `1344x376@15fps` (the only mode confirmed corruption-free over usbipd; higher
-bandwidth corrupts over USB-over-IP). To drive the `usbipd` steps manually instead
-of via the script, see [DOCKER_CMDS.md](DOCKER_CMDS.md).
+ZED device/resolution/fps/eye come from the `zed_camera:` block in
+`teleop.yaml`. Use `1344x376@15fps`, the only mode we've confirmed
+corruption-free over usbipd; higher-bandwidth modes tend to corrupt over
+USB-over-IP. To drive the `usbipd` steps by hand instead of through the
+script, see [DOCKER_CMDS.md](DOCKER_CMDS.md).
 
 ---
 
@@ -138,9 +144,10 @@ docker exec -it ros-z1-teleop bash -ic "z1_target"   # /hand/target_pose
 docker exec -it ros-z1-teleop bash -ic "z1_cam"      # /hand/debug_image overlay
 ```
 
-Expected: with a hand visible and an **open palm**, `tracking_active` is `true`
-and `target_pose` Y/Z track your hand; make a **fist** and it goes `false` and
-the arm holds. The overlay border is green while driving, red while frozen.
+With a hand visible and an open palm, `tracking_active` should read `true`
+and `target_pose` Y/Z should track your hand. Make a fist and it should drop
+to `false`, with the arm holding its pose. The overlay border goes green
+while driving, red while frozen.
 
 ---
 
@@ -152,8 +159,8 @@ relaunch (or `docker cp` it into the running container). Common knobs:
 - **Which hand:** `gesture/hand: right | left | either`.
 - **Reach/box:** `mapping/fixed_x`, `mapping/y_range`, `mapping/z_range`
   (keep within `arm_tracker/workspace`).
-- **Steadiness:** lower `smoothing/min_cutoff` for smoother (laggier) motion;
-  `mapping/tracked_point: palm_centroid` is steadier than `wrist`.
+- **Steadiness:** lower `smoothing/min_cutoff` for smoother but laggier
+  motion; `mapping/tracked_point: palm_centroid` is steadier than `wrist`.
 - **Clutch feel:** `gesture/open_fingers`, `gesture/fist_fingers`,
   `gesture/hysteresis_frames`, `gesture/lost_frames`.
 - **Gripper:** `gesture/gripper: pinch | none`; `gesture/pinch_*_dist`.
@@ -166,8 +173,9 @@ relaunch (or `docker cp` it into the running container). Common knobs:
 docker rm -f ros-z1-teleop
 ```
 
-Mode A/B containers self-remove on exit (`--rm`); the ZED script removes a stale
-container before starting, so you can switch modes without manual cleanup.
+Mode A/B containers remove themselves on exit (`--rm`); the ZED script clears
+out a stale container before starting, so you can switch modes without
+manual cleanup.
 
 ---
 

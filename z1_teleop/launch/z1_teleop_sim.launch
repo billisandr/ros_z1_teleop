@@ -8,7 +8,7 @@
            image_source:=webcam
            image_source:=video:/path/to/hand.mp4
            image_source:=external      (another node publishes the image topic)
-         See PLAN.md §9 / the README for the Windows camera reality check.
+         See the README's camera-sourcing section for the Windows camera reality check.
          ===================================================================== -->
 
     <!-- Load station config into the parameter server -->

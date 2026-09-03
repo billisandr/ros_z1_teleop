@@ -1,7 +1,10 @@
-# Z1 Hand-Teleop Station
+# ROS Noetic Z1 Arm Simulation with Hand Teleoperation
 
-Gazebo simulation of the Unitree Z1 robotic arm that **follows the operator's
-hand** seen by a camera (MediaPipe Hands), containerized in Docker.
+Gazebo simulation of the Unitree Z1 robotic arm following an operator's hand via
+a webcam, RealSense D435, or ZED 2 camera, using MediaPipe Hands for real-time
+Cartesian control, alongside a live Streamlit control panel.
+
+Workshop UI ([live control panel](z1_teleop/scripts/teleop_ui.py)).
 
 ![ROS Noetic](https://img.shields.io/badge/ROS-Noetic-blue)
 ![Python 3.8](https://img.shields.io/badge/Python-3.8-blue)
@@ -15,6 +18,7 @@ hand** seen by a camera (MediaPipe Hands), containerized in Docker.
 ## Table of Contents
 
 - [Overview](#overview)
+- [Key Features](#key-features)
 - [Operator conventions](#operator-conventions)
 - [Architecture](#architecture)
 - [Install and build](#install-and-build)
@@ -30,57 +34,67 @@ hand** seen by a camera (MediaPipe Hands), containerized in Docker.
 
 ## Overview
 
-The Z1 (in Gazebo) mirrors the participant's hand: move your hand, the arm
-copies it. A camera frame goes to a MediaPipe **Hands** node, which maps the
-tracked hand point's position in the image directly to a world-frame target; the
-arm-tracker node solves IK and drives the Gazebo joint controllers.
+Gazebo simulation of the Unitree Z1 arm with a full perception-to-control
+pipeline: MediaPipe Hands tracks an operator's hand via camera, and the arm
+follows it in real time using Cartesian control.
 
-This is a hand-teleop fork of an ArUco-marker tracking station — the ArUco
-perception was removed and replaced by hand/arm following. The control side is
-reused almost verbatim: a hand mirror *is* a 2D target.
+---
 
-**Default control law — Cartesian "hand mirror" (no calibration, no TF, no
-depth):**
+## Key Features
 
-```
-u, v = normalized image coords of the tracked hand point  (v grows downward)
-Y =  map(u, 0..1 -> y_max..y_min)   # mirrored: hand right -> arm right
-Z =  map(v, 0..1 -> z_max..z_min)   # inverted: image v is top-down
-X =  fixed_x                        # depth held constant
-```
-
-The image uses Mesa software rendering (llvmpipe) by default — no GPU is required
-to run Gazebo or RViz, and MediaPipe Hands runs fine on CPU.
+- Full Gazebo simulation of the Unitree Z1 6-DOF arm with gripper
+- MediaPipe Hands tracking via OpenCV and cv_bridge, published as world-frame
+  Cartesian targets
+- RealSense D435 or ZED 2 real-camera tracking, alongside a webcam or a
+  looping video file for hardware-free demos
+- Operator conventions: open-palm/fist clutch to engage or freeze the arm,
+  optional pinch-to-gripper control
+- Two control laws: a default Cartesian "hand mirror" (no calibration, no TF,
+  no depth estimate) and an opt-in joint-mirror mode that drives the Z1
+  joints directly from MediaPipe Pose
+- Smooth Cartesian arm tracking with low-pass (OneEuro) filtering and
+  workspace clamping
+- Centralized YAML configuration for hand mapping, gesture conventions,
+  camera mode, and workspace limits
+- Pre-configured RViz layout with robot model, TF tree, camera feed, and
+  hand-tracking debug overlay
+- Software rendering baked in, works without NVIDIA drivers or GPU
+  passthrough
+- Live Streamlit control panel for tuning gesture and joint-mirror
+  parameters without restarting
 
 ---
 
 ## Operator conventions
 
-> **Cheat sheet: Open palm to drive, fist to freeze. Show your right hand.**
+> Cheat sheet: open palm to drive, fist to freeze. Show your right hand.
 
-1. **Handedness.** One hand is tracked (`gesture/hand`, default `right`). The
-   feed is mirrored (selfie view) so "right" means *your* right hand.
-2. **Clutch.** The arm follows **only while engaged**:
-   - **Open palm** (≥4 fingers extended) → **ENGAGE** (arm follows).
-   - **Closed fist** (≤1 finger extended) → **FREEZE** (arm holds its pose).
-     Lets you reposition your hand without dragging the arm.
-   - A short frame hysteresis avoids flicker.
-3. **Start frozen (safety).** The arm always starts frozen on launch and after
-   the hand is lost — show an open palm to (re)engage. It never lurches on start.
-4. **Gripper.** Pinch (thumb-to-index distance) drives the gripper: fingers
-   together = closed, apart = open (`gesture/gripper: pinch`, default on).
-5. **Lost hand.** If the hand disappears for `gesture/lost_frames` frames, the
-   arm freezes and the clutch resets.
+1. **Handedness.** The station tracks one hand (`gesture/hand`, default
+   `right`). The feed is mirrored, selfie-style, so "right" means your right
+   hand as you see yourself on screen.
+2. **Clutch.** The arm only follows while engaged:
+   - Open palm (four or more fingers extended) engages tracking.
+   - Closed fist (one finger or fewer) freezes the arm in place, so you can
+     reposition your hand without dragging the arm along with it.
+   - A short frame hysteresis keeps this from flickering on borderline poses.
+3. **Starts frozen.** The arm always comes up frozen, both on launch and any
+   time it loses the hand. Show an open palm to (re)engage. It never lurches
+   on start.
+4. **Gripper.** A pinch between thumb and index finger drives the gripper:
+   fingers together closes it, apart opens it (`gesture/gripper: pinch`,
+   on by default).
+5. **Lost hand.** If the hand drops out of frame for `gesture/lost_frames`
+   frames, the arm freezes and the clutch resets.
 
-The `/hand/debug_image` overlay shows the landmarks, the detected hand, the
-finger count, the clutch state (ENGAGED/FROZEN), the target Y/Z, and the gripper
-value, with a green border while driving and red while frozen.
+The `/hand/debug_image` overlay shows the tracked landmarks, finger count,
+clutch state (ENGAGED or FROZEN), the current Y/Z target, and the gripper
+value. The border goes green while driving, red while frozen.
 
 ---
 
 ## Architecture
 
-```
+```txt
  Real camera (webcam / ZED-2 UVC / D435 / video file)
         |  /camera/color/image_raw          (sensor_msgs/Image)
         v
@@ -96,8 +110,22 @@ value, with a green border while driving and red while frozen.
  Gazebo: Z1 arm + joint controllers + robot_state_publisher (TF)
 ```
 
-The image source is swappable (Gazebo plugin / webcam / D435 / ZED-2 UVC / video
-file) because every consumer only knows the `/camera/color/image_raw` topic.
+The image source is swappable between the Gazebo plugin, a webcam, a D435, a
+ZED-2 over UVC, or a video file, because every downstream node only ever
+looks at the `/camera/color/image_raw` topic.
+
+The default control law is a Cartesian "hand mirror." No calibration, no TF,
+no depth estimate, just a direct 2D-to-2D map:
+
+```txt
+u, v = normalized image coords of the tracked hand point  (v grows downward)
+Y =  map(u, 0..1 -> y_max..y_min)   # mirrored: hand right -> arm right
+Z =  map(v, 0..1 -> z_max..z_min)   # inverted: image v is top-down
+X =  fixed_x                        # depth held constant
+```
+
+Rendering runs on Mesa software rendering (llvmpipe) by default, so no GPU is
+needed for Gazebo or RViz, and MediaPipe Hands runs fine on CPU too.
 
 **Packages**
 
@@ -134,9 +162,10 @@ If you cloned without `--recursive`:
 git submodule update --init --recursive
 ```
 
-The first build takes ~10–15 min (it compiles the Z1 SDK and the `z1_controller`
-Gazebo bridge, then `catkin_make`). The build runs an import smoke test that
-fails loudly if MediaPipe / OpenCV / `cv_bridge` do not coexist.
+The first build takes about 10 to 15 minutes: it compiles the Z1 SDK and the
+`z1_controller` Gazebo bridge, then runs `catkin_make`. An import smoke test
+runs at the end and fails the build loudly if MediaPipe, OpenCV, and
+`cv_bridge` don't coexist cleanly.
 
 ---
 
@@ -170,13 +199,13 @@ docker run -it --rm --name ros-z1-teleop --device /dev/video0:/dev/video0 \
     -e DISPLAY=$DISPLAY ros-z1-teleop bash -ic "z1_teleop"
 ```
 
-(On Windows the built-in webcam generally cannot be passed into Docker — use a
-video file or the ZED path. See the camera section below.)
+On Windows, the built-in webcam generally can't be passed into Docker at all.
+Use a video file or the ZED path instead; see the camera section below.
 
 ### C. ZED 2 over USB (recommended on Windows)
 
-One-shot script (from **Git Bash on the Windows host**) — handles VcXsrv,
-`usbipd` bind/attach, `uvcvideo`, container start, and auto-opens RViz:
+A one-shot script, run from Git Bash on the Windows host, handles VcXsrv,
+`usbipd` bind/attach, `uvcvideo`, starting the container, and opening RViz:
 
 ```bash
 bash start_teleop.sh                 # launches z1_teleop_zed
@@ -192,23 +221,25 @@ docker exec -it ros-z1-teleop bash -ic "z1_unpause"
 
 ## Camera sourcing — Windows reality check
 
-The operator's camera is the practical crux on Windows:
+Getting a camera into the container is the part of this project that gave us
+the most grief on Windows, so here's what actually works:
 
-- **Laptop integrated webcams generally cannot be `usbipd`-attached** into the
-  Docker Desktop WSL2 VM. Don't assume `/dev/video0` is the built-in webcam
-  inside the container.
-- **Recommended paths, in order:**
-  1. **Bundled/looping video file** (`image_source:=video:/path.mp4`) — zero
-     hardware, always works, great for first bring-up and attendees without
-     cameras.
-  2. **ZED 2 / external USB cam via `usbipd`** — `start_teleop.sh` does the
-     bind/attach/`uvcvideo` dance; use the lowest-bandwidth UVC mode
-     (`1344x376@15fps` is corruption-free — see
-     [docs/DOCKER_CMDS.md](docs/DOCKER_CMDS.md)).
-  3. **Run MediaPipe on the host**, publish over the ROS network, and point
-     `ROS_MASTER_URI` at the container (advanced).
-- **Linux/macOS:** native `--device /dev/video0` works for a built-in or USB
-  webcam.
+- Laptop-integrated webcams generally cannot be `usbipd`-attached into the
+  Docker Desktop WSL2 VM. Don't assume `/dev/video0` inside the container is
+  your built-in webcam, because it usually isn't reachable at all.
+- In order of how much trouble they are:
+  1. **A bundled or looping video file** (`image_source:=video:/path.mp4`).
+     Zero hardware needed, always works, and it's the easiest way to bring
+     the station up the first time or to demo it without a camera on hand.
+  2. **A ZED 2 or other external USB cam via `usbipd`.** `start_teleop.sh`
+     handles the bind/attach/`uvcvideo` sequence for you. Use the
+     lowest-bandwidth UVC mode (`1344x376@15fps` is the one we found
+     corruption-free; see [docs/DOCKER_CMDS.md](docs/DOCKER_CMDS.md)).
+  3. **Run MediaPipe on the host** and publish over the ROS network, pointing
+     `ROS_MASTER_URI` at the container. This works but is more setup than
+     it's worth unless you're already fighting the other two paths.
+- On Linux and macOS, this whole problem mostly doesn't exist: native
+  `--device /dev/video0` works for a built-in or USB webcam.
 
 ---
 
@@ -232,7 +263,7 @@ loaded at launch. Highlights:
 | `arm_tracker` | `workspace`, `smoothing_alpha`, `enable_gripper` | control limits + gripper |
 | `scene_objects` | `enabled`, `static`, `objects` | spawn cubes/pyramids/cylinders as interaction props (`enabled: false` = clean scene) |
 
-Edit the YAML and relaunch (or `docker cp` it into a running container) — no
+Edit the YAML and relaunch (or `docker cp` it into a running container). No
 rebuild needed.
 
 ---
@@ -272,10 +303,12 @@ Available inside the container (defined in `~/.bashrc`):
 
 ## Live control panel (UI)
 
-A browser control panel (Streamlit) tunes the station **live** — no YAML edits or
-restarts. It sets ROS params; the detector and arm tracker re-read the "soft"
-knobs every loop. Especially handy for **joint-mirror calibration**
-([docs/JOINT_MIRROR.md](docs/JOINT_MIRROR.md)).
+A browser-based control panel, built with Streamlit, lets you tune the
+station live, without touching YAML or restarting anything. It sets ROS
+params, and the detector and arm tracker re-read the "soft" knobs on every
+loop. It's especially handy for joint-mirror calibration
+([docs/JOINT_MIRROR.md](docs/JOINT_MIRROR.md)), which otherwise means a lot
+of edit-relaunch-repeat cycles.
 
 Start the container with port 8501 published, then run `z1_ui`:
 
@@ -286,10 +319,11 @@ docker run -it --rm --name ros-z1-teleop -p 8501:8501 \
 docker exec -it ros-z1-teleop bash -ic "z1_ui"
 ```
 
-Open **http://localhost:8501**. Tabs: live **Status**, **Cartesian** knobs,
-**Joint-mirror** per-joint map, **Gestures**, and **Presets / Save** (save current
-values back to `teleop.yaml`). Changing the control **mode**, MediaPipe model
-settings, or the camera source still needs a relaunch (flagged in the UI).
+Open **http://localhost:8501**. There are tabs for live status, Cartesian
+knobs, the joint-mirror per-joint map, gesture settings, and a presets/save
+tab that writes current values back to `teleop.yaml`. Changing the control
+mode, MediaPipe model settings, or the camera source still needs a relaunch,
+and the UI flags this when it applies.
 
 ---
 
@@ -298,7 +332,7 @@ settings, or the camera source still needs a relaunch (flagged in the UI).
 | Symptom | Fix |
 | --- | --- |
 | Gazebo/RViz window never appears | X server not running with `-wgl` (Windows) / `DISPLAY` not set |
-| Arm doesn't move | Show an **open palm** to engage; check `/hand/tracking_active` is true and physics is unpaused (`z1_unpause`) |
+| Arm doesn't move | Show an open palm to engage; check `/hand/tracking_active` is true and physics is unpaused (`z1_unpause`) |
 | Wrong hand tracked | Set `gesture/hand`; confirm `hand/flip_horizontal: true` |
 | No hand detected | Improve lighting; lower `hand/min_detection_confidence`; check `/hand/debug_image` |
 | Garbled ZED video over usbipd | Use the `1344x376@15fps` mode; see [docs/DOCKER_CMDS.md](docs/DOCKER_CMDS.md) |
@@ -308,16 +342,22 @@ settings, or the camera source still needs a relaunch (flagged in the UI).
 
 ## AI-assistance
 
-Parts of this workspace were developed with the assistance of large language
-models (Claude by Anthropic).
+Parts of this workspace, including code, documentation, and debugging
+support, were developed with the help of large language models (Claude, by
+Anthropic). We reviewed and tested everything before it landed here, but if
+you're adapting this for your own work, treat the AI-assisted parts with the
+same scrutiny you'd give any code you didn't write yourself.
 
-AI-generated code here controls a **simulated** robotic arm. Before adapting any
-of it to real hardware:
+That matters more here than usual because this code, in its current form,
+controls a simulated robotic arm, not a real one. Before pointing any of it
+at actual hardware:
 
 - Review the workspace bounds and gains in
   [z1_teleop/config/teleop.yaml](z1_teleop/config/teleop.yaml).
 - Test incrementally at low speeds before enabling full tracking.
-- This code is for simulation and educational use — use caution on real hardware.
+- Treat this as a simulation and education project, not a hardware-ready
+  controller. Use caution, and validate independently, before it touches a
+  real arm.
 
 ---
 
